@@ -212,7 +212,7 @@
 		reg = <0>;
 		spi-max-frequency = <52000000>;
 		spi-tx-bus-width = <4>;
-		spi-tx-bus-width = <4>;
+		spi-rx-bus-widt = <4>;
 	};
 };
 
