@@ -18,10 +18,6 @@ mv -f target/linux/amlogic/meson8b/config-6.6 target/linux/amlogic/meson8b/confi
 
 sed -i "s/KERNEL_PATCHVER:=6.6/KERNEL_PATCHVER:=6.12/" target/linux/amlogic/Makefile
 
-mv -f gen_aml_emmc_img.sh target/linux/amlogic/image/
-
-chmod +x target/linux/amlogic/image/gen_aml_emmc_img.sh
-
 sed -i "s/wpad-openssl/wpad-basic-mbedtls/" target/linux/amlogic/image/Makefile
 
 sed -i "s/neon-vfpv4/vfpv4/" target/linux/amlogic/meson8b/target.mk
