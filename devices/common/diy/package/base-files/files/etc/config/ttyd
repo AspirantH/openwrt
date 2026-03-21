@@ -1,0 +1,8 @@
+
+config ttyd
+	option command '/bin/login -f root'
+	option ssl '1'
+	option ssl_cert '/etc/ssl.crt'
+	option ssl_key '/etc/ssl.key'
+	option debug '7'
+

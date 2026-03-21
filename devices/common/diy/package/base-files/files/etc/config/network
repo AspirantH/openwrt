@@ -1,0 +1,74 @@
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option ula_prefix 'fdf5:25e7:97b0::/48'
+	option packet_steering '1'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	option ipv6 '1'
+	list ports 'eth1'
+	list ports 'eth2'
+	list ports 'eth3'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ipaddr '10.0.0.1'
+	option netmask '255.255.255.0'
+	option ip6assign '64'
+	list ip6class 'wan_6'
+
+config interface 'wan'
+	option device 'eth0'
+	option proto 'pppoe'
+	option username '13382739090'
+	option password '08240238'
+	option ipv6 'auto'
+	option peerdns '1'
+	list dns '218.2.2.2'
+	list dns '218.4.4.4'
+	list dns '119.29.29.29'
+	list dns '223.5.5.5'
+	list dns '61.147.37.1'
+	list dns '61.177.7.1'
+	list dns '114.114.114.114'
+	option auto '1'
+
+config interface 'wan6'
+	option device 'eth0'
+	option proto 'none'
+	option reqaddress 'try'
+	option reqprefix 'auto'
+	list ip6class 'wan_6'
+
+config device
+	option name 'zt2lr6hhtn'
+
+config device
+	option name 'eth0'
+	option ipv6 '1'
+
+config interface 'zerotier'
+	option proto 'none'
+	option device 'zt2lr6hhtn'
+	option ip6assign '64'
+
+config device
+	option name 'eth1'
+
+config device
+	option name 'eth2'
+
+config device
+	option name 'eth3'
+
+config device
+	option name 'pppoe-wan'
+

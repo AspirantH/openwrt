@@ -1,0 +1,9 @@
+
+config user_info
+	option mac '98:54:1b:4b:b7:a2'
+	option nickname 'ZJTLAPTOP'
+
+config user_info
+	option mac '00:0c:29:74:7e:3a'
+	option nickname 'TTTTTT'
+

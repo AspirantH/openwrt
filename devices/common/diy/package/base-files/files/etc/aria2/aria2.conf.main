@@ -1,0 +1,20 @@
+# Auto generated file, changes to this file will be lost.
+dir=/opt/cache
+enable-rpc=true
+rpc-allow-origin-all=true
+rpc-listen-all=true
+quiet=true
+continue=true
+input-file=/etc/aria2/aria2.session.main
+save-session=/etc/aria2/aria2.session.main
+check-certificate=true
+enable-dht=true
+dht-file-path=/etc/aria2/dht.dat.main
+bt-enable-lpd=true
+disk-cache=128M
+enable-peer-exchange=true
+file-allocation=none
+follow-torrent=true
+max-concurrent-downloads=20
+rpc-listen-port=6800
+save-session-interval=30

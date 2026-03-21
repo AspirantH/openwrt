@@ -1,0 +1,5 @@
+#0 0 * * * rm -rf /opt/cache/* && { [ -f "/alist/💻APPS/💻Private/backup.tar.gz" ] && mv "/alist/💻APPS/💻Private/backup.tar.gz" "/alist/💻APPS/💻Private/backup-$(date +\%Y-\%m-\%d).tar.gz" || true; } && sh /etc/backup.run /tmp && [ -f "/tmp/backup.tar.gz" ] && mv "/tmp/backup.tar.gz" "/alist/💻APPS/💻Private/backup.tar.gz"
+
+0 0 * * * /sbin/sysupgrade -b /alist/💻APPS/💻Private/$(date +\%Y\%m\%d)-backup.tar.gz
+
+0 5 * * * cp -af /alist/💻SMB/*.zip /alist/🗂️123盘/♻️同步盘/

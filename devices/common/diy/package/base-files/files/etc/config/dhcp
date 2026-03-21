@@ -1,0 +1,91 @@
+
+config dnsmasq
+	option localise_queries '1'
+	option local '/lan/'
+	option domain 'lan'
+	option expandhosts '1'
+	option authoritative '1'
+	option readethers '1'
+	option leasefile '/tmp/dhcp.leases'
+	option ednspacket_max '1232'
+	option allservers '1'
+	option min_ttl '3600'
+	option cachesize '10000'
+	option dnsforwardmax '10000'
+	option localservice '0'
+	option rebind_protection '1'
+	option localuse '1'
+	option domainneeded '1'
+	option resolvfile '/tmp/resolv.conf.d/resolv.conf.auto'
+
+config dhcp 'lan'
+	option interface 'lan'
+	option start '100'
+	option limit '150'
+	option leasetime '12h'
+	option dhcpv4 'server'
+	option ra 'server'
+	option dhcpv6 'server'
+	option force '1'
+	list dns '2400:3200:baba::1'
+	list dns '2606:4700:4700::1111'
+	list dns '2400:3200::1'
+	list ra_flags 'managed-config'
+	list ra_flags 'other-config'
+	list dhcp_option '6,218.2.2.2,218.4.4.4,119.29.29.29,223.5.5.5,61.147.37.1,61.177.7.1,114.114.114.114'
+
+config dhcp 'wan'
+	option interface 'wan'
+	option ignore '1'
+	option ra 'relay'
+	option dhcpv6 'relay'
+	option ndp 'relay'
+
+config odhcpd 'odhcpd'
+	option maindhcp '0'
+	option leasefile '/tmp/hosts/odhcpd'
+	option leasetrigger '/usr/sbin/odhcpd-update'
+	option loglevel '4'
+	option piofolder '/tmp/odhcpd-piofolder'
+
+config host
+	option name 'TTTTTT'
+	option ip '10.0.0.229'
+	option mac '00:0C:29:74:7E:3A'
+
+config host
+	option name 'vivo-X100'
+	option ip '10.0.0.198'
+	option mac '22:E7:C1:7D:25:90'
+
+config host
+	option name 'YOGA'
+	option ip '10.0.0.220'
+	option mac '28:DF:EB:52:B4:44'
+
+config dhcp 'wan6'
+	option interface 'wan6'
+	option ra 'relay'
+	option master '1'
+	option dhcpv6 'relay'
+	option preferred_lifetime '7d'
+	option ndp 'relay'
+	option ignore '1'
+
+config dhcp 'zerotier'
+	option interface 'zerotier'
+	option ignore '1'
+
+config domain
+	option name 'ESXI'
+	option ip '10.0.0.2'
+
+config host
+	option name 'ESXI'
+	list mac 'A8:B8:E0:00:1E:F6'
+	option ip '10.0.0.2'
+
+config domain
+	option name 'AP'
+	option ip '10.0.0.210'
+
