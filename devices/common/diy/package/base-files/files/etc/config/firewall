@@ -116,15 +116,6 @@ config rule
 	option proto 'udp'
 	option target 'ACCEPT'
 
-config redirect
-	option dest 'lan'
-	option target 'DNAT'
-	option name '9998'
-	option src 'wan'
-	option src_dport '9998'
-	option dest_ip '10.0.0.1'
-	option dest_port '443'
-
 config rule
 	option name 'zerotier'
 	option src '*'
