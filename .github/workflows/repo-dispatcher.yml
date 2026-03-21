@@ -1,19 +1,6 @@
-#=================================================
-# https://github.com/P3TERX/Actions-OpenWrt
-# Description: Build OpenWrt using GitHub Actions
-# Lisence: MIT
-# Author: P3TERX
-# Blog: https://p3terx.com
-#=================================================
-
 name: Repo Dispatcher
 
 on: 
-  # push: 
-  #   branches:
-  #     - master
-  #schedule:
-  #  - cron: 30 18 * * *
   workflow_dispatch:
     inputs:
       param:
@@ -28,6 +15,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64]
     steps:
     - name: Checkout
       uses: actions/checkout@main
@@ -42,8 +32,8 @@ jobs:
     - name: Load Settings.ini
       run: |
         source "${GITHUB_WORKSPACE}/devices/common/settings.ini"
-        if [ -f "devices/${{matrix.target}}/settings.ini" ]; then
-          source "${GITHUB_WORKSPACE}/devices/${{matrix.target}}/settings.ini"
+        if [ -f "devices/${{ matrix.target }}/settings.ini" ]; then
+          source "${GITHUB_WORKSPACE}/devices/${{ matrix.target }}/settings.ini"
         fi
         echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
         echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
@@ -55,17 +45,16 @@ jobs:
         gitdate=$(date -d "$gitdate" +%s)
         now=$(date -d "$(date)" +%s)
         if [[ $(expr $gitdate + 120) < $now ]]; then
-        curl -X POST https://api.github.com/repos/learnscode/openwrt-packages/dispatches \
-        -H "Accept: application/vnd.github.everest-preview+json" \
-        -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
-        --data '{"event_type": "update"}'
+          curl -X POST https://api.github.com/repos/learnscode/openwrt-packages/dispatches \
+          -H "Accept: application/vnd.github.everest-preview+json" \
+          -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
+          --data '{"event_type": "update"}'
         fi
 
     - name: Trigger Compile
       run: |
         sudo timedatectl set-timezone "$TZ"
-          curl \
-          -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
+        curl -X POST https://api.github.com/repos/${{ github.repository }}/dispatches \
           -H "Accept: application/vnd.github.everest-preview+json" \
           -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
-          -d '{"event_type": "x86_64 ${{ github.event.inputs.param }}", "client_payload": {"target": "x86_64"}}'
+          -d "{\"event_type\": \"${{ matrix.target }} ${{ github.event.inputs.param }}\", \"client_payload\": {\"target\": \"${{ matrix.target }}\"}}"
