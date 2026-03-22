@@ -85,4 +85,4 @@ sed -i \
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
 rm -rf package/feeds/packages/jool
-mkdir -p package/base-files/files/usr/bin && wget -qO- https://release.66666.host/v3.0.0beta3/3.0.0_wanji/lucky_3.0.0_Linux_x86_64_wanji.tar.gz | tar -xz --wildcards 'lucky' -C package/base-files/files/usr/bin/ && chmod +x package/base-files/files/usr/bin/lucky
+mkdir -p package/base-files/files/usr/bin && wget -q --show-progress -O- "$LUCKY_URL" | tar -xz --wildcards 'lucky' -C package/base-files/files/usr/bin/ && chmod +x package/base-files/files/usr/bin/lucky
