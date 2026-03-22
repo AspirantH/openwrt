@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ["${{ github.event.client_payload.target }}"]
+        target: ["${{ github.event.client_payload.target || 'x86_64' }}"]
         
     steps:
     - name: Checkout
@@ -209,7 +209,11 @@ jobs:
         df -hT
         cd openwrt
         echo -e "$(($(nproc)+1)) thread compile"
+<<<<<<< HEAD
         make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; } || { tail -50 $log; df -hT; exit 1; }
+=======
+        make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; exit 1; }
+>>>>>>> a82b1267f343b6e4abac3fbc9b98deae9f68a5b0
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
