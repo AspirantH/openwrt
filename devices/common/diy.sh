@@ -85,4 +85,4 @@ sed -i \
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
 rm -rf package/feeds/packages/jool
-mkdir -p package/base-files/files/usr/bin && wget -q --show-progress -O- "$LUCKY_URL" | tar -xz --wildcards 'lucky' -C package/base-files/files/usr/bin/ && chmod +x package/base-files/files/usr/bin/lucky
+chmod +x diy/package/base-files/files/usr/bin/lucky
