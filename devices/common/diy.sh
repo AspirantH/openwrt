@@ -88,4 +88,3 @@ rm -rf package/base-files/files/etc/config/*-opkg
 mkdir -p package/base-files/files/usr/bin
 cp -f diy/package/base-files/files/usr/bin/lucky package/base-files/files/usr/bin/lucky
 chmod +x package/base-files/files/usr/bin/lucky
-sed -i '/learnscode/d' package/base-files/files/etc/opkg/distfeeds.conf
