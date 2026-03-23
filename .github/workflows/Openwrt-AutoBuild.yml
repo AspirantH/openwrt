@@ -209,8 +209,8 @@ jobs:
         df -hT
         cd openwrt
         echo -e "$(($(nproc)+1)) thread compile"
-        #make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; exit 1; }
-        make -j$(nproc) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
+        make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; exit 1; }
+        #make -j$(nproc) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
