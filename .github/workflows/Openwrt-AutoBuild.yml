@@ -225,7 +225,7 @@ jobs:
         cp $GITHUB_WORKSPACE/openwrt/build_dir/target-*/linux-*/linux-*/.config ${{matrix.target}}_kernel.config || true
         Emoji=("🎉" "🤞" "✨" "🎁" "🎈" "🎄" "🎨" "💋" "🍓" "🍕" "🍉" "💐" "🌴" "🚀" "🛸" "🗽" "⛅" "🌈" "🔥" "⛄" "🐶" "🏅" "🦄" "🐤")
         echo "EMOJI=${Emoji[$[$RANDOM % ${#Emoji[@]}]]}" >> $GITHUB_ENV
-
+        echo "FIRMWARE_PATH=$(pwd)" >> $GITHUB_ENV
 
     - name: Upload firmware for artifact
       uses: actions/upload-artifact@main
@@ -242,11 +242,10 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
       with:
-        files: "${{ env.FIRMWARE }}/*"
+        files: "${{ env.FIRMWARE_PATH }}/*.img.gz"
         name: ${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}
         tag_name: ${{ env.date }}_${{matrix.target}}
-        body_path: release.txt
-    
+        body: "OpenWrt firmware compiled from ${{ github.repository }}"
 
     - name: Delete workflow runs
       uses: GitRML/delete-workflow-runs@main
