@@ -85,5 +85,6 @@ sed -i \
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
 rm -rf package/feeds/packages/jool
+mkdir -p package/base-files/files/usr/bin
 cp -f diy/package/base-files/files/usr/bin/lucky package/base-files/files/usr/bin/lucky
 chmod +x package/base-files/files/usr/bin/lucky
