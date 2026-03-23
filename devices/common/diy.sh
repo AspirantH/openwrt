@@ -2,7 +2,7 @@
 #=================================================
 shopt -s extglob
 
-sed -i '$a src-git learnscode https://github.com/learnscode/openwrt-packages.git;main' feeds.conf.default
+sed -i '$a src-git -n learnscode https://github.com/learnscode/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
 sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
@@ -85,4 +85,5 @@ sed -i \
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
 rm -rf package/feeds/packages/jool
-chmod +x diy/package/base-files/files/usr/bin/lucky
+cp -f diy/package/base-files/files/usr/bin/lucky package/base-files/files/usr/bin/lucky
+chmod +x package/base-files/files/usr/bin/lucky
