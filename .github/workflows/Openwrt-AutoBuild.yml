@@ -201,16 +201,19 @@ jobs:
         clean: ${{ contains(github.event.inputs.param, 'nocache') }}
         #clean: ${{ contains(github.event.action, 'nocache') }}自动触发
         prefix: ${{ github.workspace }}/openwrt
-
+        
     - name: Compile the firmware
       id: compile
       run: |
         shopt -s extglob
         df -hT
         cd openwrt
+        mkdir -p package/base-files/files/usr/bin
+        cp -f diy/package/base-files/files/usr/bin/lucky package/base-files/files/usr/bin/lucky
+        chmod +x package/base-files/files/usr/bin/lucky
+        rm -f package/base-files/files/etc/config/*-opkg 2>/dev/null || true
         echo -e "$(($(nproc)+1)) thread compile"
-        make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; exit 1; }
-        #make -j$(nproc) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
+        make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
