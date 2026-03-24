@@ -22,19 +22,16 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     name: Build ${{matrix.target}}
     strategy:
       fail-fast: false
       matrix:
         target: ["${{ github.event.client_payload.target || 'x86_64' }}"]
-        
     steps:
     - name: Checkout
       uses: actions/checkout@main
       with:
           fetch-depth: 0
-
 
     - name: Load Settings.ini
       run: |
@@ -55,7 +52,6 @@ jobs:
         echo "UPLOAD_FIRMWARE_TO_WETRANSFER=${UPLOAD_FIRMWARE_TO_WETRANSFER}" >> $GITHUB_ENV
         sed -i "1a REPO_TOKEN=${{ secrets.TOKEN_OPENWRT }}" ${{ github.workspace }}/devices/common/diy.sh
         sed -i "1a TARGET=${{matrix.target}}" ${{ github.workspace }}/devices/common/diy.sh
-
 
     - name: Free disk space
       uses: coder-xiaomo/free-disk-space@main
@@ -201,17 +197,21 @@ jobs:
         clean: ${{ contains(github.event.inputs.param, 'nocache') }}
         #clean: ${{ contains(github.event.action, 'nocache') }}自动触发
         prefix: ${{ github.workspace }}/openwrt
-        
+
+    - name: Apply custom files
+      run: |
+        cd openwrt
+        mkdir -p files
+        cp -rf ../devices/common/diy/package/base-files/files/* files/
+        chmod +x files/usr/bin/*
+        rm -f files/etc/config/*-opkg
+
     - name: Compile the firmware
       id: compile
       run: |
         shopt -s extglob
         df -hT
         cd openwrt
-        mkdir -p package/base-files/files/usr/bin
-        cp -f diy/package/base-files/files/usr/bin/lucky package/base-files/files/usr/bin/lucky
-        chmod +x package/base-files/files/usr/bin/lucky
-        rm -f package/base-files/files/etc/config/*-opkg 2>/dev/null || true
         echo -e "$(($(nproc)+1)) thread compile"
         make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
