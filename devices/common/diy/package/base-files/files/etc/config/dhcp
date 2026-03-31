@@ -42,17 +42,11 @@ config dhcp 'wan'
 	option ndp 'relay'
 
 config odhcpd 'odhcpd'
-	option maindhcp '0'
 	option leasefile '/tmp/odhcpd.leases'
 	option leasetrigger '/usr/sbin/odhcpd-update'
 	option loglevel '4'
 	option piodir '/tmp/odhcpd-piodir'
 	option hostsdir '/tmp/hosts'
-
-config host
-	option name 'TTTTTT'
-	option ip '10.0.0.229'
-	option mac '00:0C:29:74:7E:3A'
 
 config host
 	option name 'vivo-X100'
