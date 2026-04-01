@@ -63,7 +63,7 @@
  	render(listData) {
 +			const checkUpdateNeeded = function() {
 +            return Promise.all([
-+                L.resolveDefault(fs.stat('/tmp/opkg-lists/kwrt_kiddin9'), null),
++                L.resolveDefault(fs.stat('/tmp/opkg-lists'), null),
 +                L.resolveDefault(fs.read('/tmp/resolv.conf.d/resolv.conf.auto'), '')
 +            ]).then(function(results) {
 +                const stat = results[0];
@@ -73,7 +73,7 @@
 +
 +                if (stat) {
 +                    const currentDate = new Date();
-+                    const lastUpdateDate = new Date(stat.mtime * 1000);  // Convert seconds to milliseconds
++                    const lastUpdateDate = new Date(stat.ctime * 1000);  // Convert seconds to milliseconds
 +                    // 检查是否在今天的零点之后更新过
 +                    const today = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
 +                    needUpdate = lastUpdateDate < today;
