@@ -1,6 +1,6 @@
 {
   "force": true,
-  "site_url": "/",
+  "site_url": "",
   "cdn": "",
   "jwt_secret": "CytCo0DOHihEc1X1",
   "token_expires_in": 999999,
@@ -69,7 +69,7 @@
   "mmap_thresholdMB": 4,
   "max_connections": 0,
   "max_concurrency": 0,
-  "tls_insecure_skip_verify": false,
+  "tls_insecure_skip_verify": true,
   "tasks": {
     "download": {
       "workers": 5,
@@ -140,6 +140,6 @@
     "enable": false,
     "listen": ":5222"
   },
-  "last_launched_version": "v4.1.10 (OpenWrt x86_64)",
+  "last_launched_version": "v4.2.0 (OpenWrt x86_64)",
   "proxy_address": ""
 }
