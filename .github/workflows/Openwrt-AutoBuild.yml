@@ -209,12 +209,11 @@ jobs:
       id: compile
       run: |
         shopt -s extglob
-        df -hT
         cd openwrt
-        find build_dir/target-*/root-*/etc -name "*-opkg" -delete
-        find build_dir/target-*/root-*/etc/config -name "*-opkg" -delete
         echo -e "$(($(nproc)+1)) thread compile"
-        make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
+        make -j$(($(nproc)+1)) package/install || make -j1 V=s package/install
+        find build_dir/ -name "*-opkg" -delete
+        make -j$(($(nproc)+1)) target/install || make -j1 V=s target/install
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
