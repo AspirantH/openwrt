@@ -204,7 +204,8 @@ jobs:
         mkdir -p files
         cp -rf ../devices/common/diy/package/base-files/files/* files/
         chmod +x files/usr/bin/*
-        sed -i '/-find $(1) -name .git/a\	@-find $(1)/etc/ -name "*-opkg" -type f -delete' include/rootfs.mk
+        sed -i '/@-find $(1) -name CVS -o -name .svn -o -name .git/a\	@find $(1)/etc/config -name "*-opkg" -delete' include/rootfs.mk
+        sed -i '/@-find $(1) -name CVS -o -name .svn -o -name .git/a\	@find $(1)/etc        -name "*-opkg" -delete' include/rootfs.mk
 
     - name: Compile the firmware
       id: compile
