@@ -217,6 +217,12 @@ jobs:
         rm -rf staging_dir/toolchain-*/initial
         df -hT
 
+    - name: Clean up all *-opkg files
+      run: |
+        cd openwrt
+        find build_dir/target-*/root-*/ -name "*-opkg" -delete
+        echo "All *-opkg files cleaned"
+
     - name: Organize files
       id: organize
       continue-on-error: true
