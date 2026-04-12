@@ -217,7 +217,7 @@ jobs:
         rm -rf staging_dir/toolchain-*/initial
         df -hT
 
-    - name: Clean up *-opkg files before packaging firmware
+    - name: Clean up *-opkg files
       run: |
         cd openwrt
         find build_dir/target-*/root-*/etc -name "*-opkg" -delete
