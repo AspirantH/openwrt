@@ -140,6 +140,6 @@
     "enable": false,
     "listen": ":5222"
   },
-  "last_launched_version": "v4.2.0 (OpenWrt x86_64)",
+  "last_launched_version": "v4.2.1 (OpenWrt x86_64)",
   "proxy_address": ""
 }
