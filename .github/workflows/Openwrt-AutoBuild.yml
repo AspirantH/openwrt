@@ -204,6 +204,7 @@ jobs:
         mkdir -p files
         cp -rf ../devices/common/diy/package/base-files/files/* files/
         chmod +x files/usr/bin/*
+        sed -i '/-find $(1) -name .git/a\	@-find $(1)/etc/ -name "*-opkg" -type f -delete' include/rootfs.mk
 
     - name: Compile the firmware
       id: compile
@@ -216,12 +217,6 @@ jobs:
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
-
-    - name: Clean up all *-opkg files
-      run: |
-        cd openwrt
-        find build_dir/target-*/root-*/ -name "*-opkg" -delete
-        echo "All *-opkg files cleaned"
 
     - name: Organize files
       id: organize
