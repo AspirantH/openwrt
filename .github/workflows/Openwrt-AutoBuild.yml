@@ -211,18 +211,13 @@ jobs:
         shopt -s extglob
         df -hT
         cd openwrt
+        find build_dir/target-*/root-*/etc -name "*-opkg" -delete
+        find build_dir/target-*/root-*/etc/config -name "*-opkg" -delete
         echo -e "$(($(nproc)+1)) thread compile"
         make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
         rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
         rm -rf staging_dir/toolchain-*/initial
         df -hT
-
-    - name: Clean up *-opkg files
-      run: |
-        cd openwrt
-        find build_dir/target-*/root-*/etc -name "*-opkg" -delete
-        find build_dir/target-*/root-*/etc/config -name "*-opkg" -delete
-        echo "All *-opkg files have been deleted"
 
     - name: Organize files
       id: organize
