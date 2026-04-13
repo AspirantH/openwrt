@@ -180,5 +180,10 @@ config rule 'openlist'
 	option src 'wan'
 	option proto 'tcp'
 	option dest_port '8888 5221 5222'
-	option enabled '1'
 
+config rule
+	option name 'uhttpd'
+	option target 'ACCEPT'
+	option src 'wan'
+	option proto 'tcp'
+	option dest_port '9998 9999'
