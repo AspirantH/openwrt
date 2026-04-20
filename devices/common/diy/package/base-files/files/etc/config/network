@@ -24,7 +24,7 @@ config interface 'lan'
 	option ipaddr '10.0.0.1'
 	option netmask '255.255.255.0'
 	option ip6assign '64'
-	list ip6class 'wan_6'
+	list ip6class 'wan6'
 
 config interface 'wan'
 	option device 'eth0'
@@ -47,7 +47,7 @@ config interface 'wan6'
 	option proto 'none'
 	option reqaddress 'try'
 	option reqprefix 'auto'
-	list ip6class 'wan_6'
+	list ip6class 'wan6'
 
 config device
 	option name 'zt2lr6hhtn'

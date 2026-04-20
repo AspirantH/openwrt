@@ -174,16 +174,18 @@ config include 'zerotier_forward'
 	option position 'chain-pre'
 	option chain 'forward'
 
-config rule 'openlist'
-	option name 'openlist'
-	option target 'ACCEPT'
-	option src 'wan'
-	option proto 'tcp'
-	option dest_port '8888 5221 5222'
-
 config rule
 	option name 'uhttpd'
 	option target 'ACCEPT'
 	option src 'wan'
 	option proto 'tcp'
 	option dest_port '9998 9999'
+
+config rule 'openlist'
+	option name 'openlist'
+	option target 'ACCEPT'
+	option src 'wan'
+	option proto 'tcp'
+	option dest_port '8888 5221 5222'
+	option enabled '1'
+
