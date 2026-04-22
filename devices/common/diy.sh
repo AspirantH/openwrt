@@ -33,8 +33,10 @@ wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/
 wget -N  https://github.com/coolsnowwolf/lede/raw/refs/heads/master/package/system/fstools/patches/0200-ntfs3-with-utf8.patch -P package/system/fstools/patches/
 wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/config/Config-kernel.in -P config/
 
-rm -rf package/libs/openssl package/network/services/ppp
-git_clone_path openwrt-25.12 https://github.com/immortalwrt/immortalwrt package/libs/openssl package/network/services/ppp 
+rm -rf package/libs/openssl package/network/services/ppp feeds/luci/modules/{luci-base,luci-mod-network,luci-mod-status,luci-mod-system}
+git_clone_path openwrt-25.12 https://github.com/immortalwrt/immortalwrt package/libs/openssl package/network/services/ppp
+git_clone_path openwrt-25.12 https://github.com/coolsnowwolf/luci modules/luci-base modules/luci-mod-network  modules/luci-mod-status  modules/luci-mod-system
+mv -f modules/* feeds/luci/modules/
 
 echo "$(date +"%s")" >version.date
 sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
@@ -83,5 +85,5 @@ sed -i \
 
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-sed -i 's/this.query == null && list.length == 0/false/g' feeds/luci/applications/luci-app-opkg/htdocs/luci-static/resources/view/system/opkg.js 2>/dev/null || true
+#sed -i 's/this.query == null && list.length == 0/false/g' feeds/luci/applications/luci-app-opkg/htdocs/luci-static/resources/view/system/opkg.js 2>/dev/null || true
 rm -rf package/feeds/packages/jool

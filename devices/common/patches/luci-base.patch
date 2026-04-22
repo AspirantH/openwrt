@@ -1,122 +1,3 @@
---- a/package/feeds/luci/luci-base/root/usr/share/rpcd/ucode/luci
-+++ b/package/feeds/luci/luci-base/root/usr/share/rpcd/ucode/luci
-@@ -222,6 +222,7 @@ const methods = {
- 
- 	getFeatures: {
- 		call: function() {
-+			let kernel_version = popen('echo -n `uname -r`').read('all');
- 			let result = {
- 				firewall:   access('/sbin/fw3') == true,
- 				firewall4:  access('/sbin/fw4') == true,
-@@ -229,6 +230,7 @@ const methods = {
- 				bonding:    access('/sys/module/bonding'),
- 				mii_tool:   access('/usr/sbin/mii-tool'),
- 				offloading: access('/sys/module/xt_FLOWOFFLOAD/refcnt') == true || access('/sys/module/nft_flow_offload/refcnt') == true,
-+				fullcone:   access(`/lib/modules/${kernel_version}/xt_FULLCONENAT.ko`) == true || access(`/lib/modules/${kernel_version}/nft_fullcone.ko`) == true,
- 				br2684ctl:  access('/usr/sbin/br2684ctl') == true,
- 				swconfig:   access('/sbin/swconfig') == true,
- 				zram:       access('/sys/class/zram-control') == true,
-@@ -565,6 +567,99 @@ const methods = {
- 		}
- 	},
- 
-+	getCPUBench: {
-+		call: function() {
-+			return { cpubench: readfile('/etc/bench.log') || '' };
-+		}
-+	},
-+
-+	getCPUInfo: {
-+		call: function() {
-+			if (!access('/sbin/cpuinfo'))
-+				return {};
-+
-+			const fd = popen('/sbin/cpuinfo');
-+			if (fd) {
-+				let cpuinfo = fd.read('all');
-+				fd.close();
-+
-+				return { cpuinfo: cpuinfo };
-+			} else {
-+				return { cpuinfo: error() };
-+			}
-+		}
-+	},
-+
-+	getCPUUsage: {
-+		call: function() {
-+			const fd = popen('top -n1 | awk \'/^CPU/ {printf("%d%", 100 - $8)}\'');
-+			if (fd) {
-+				let cpuusage = fd.read('all');
-+				fd.close();
-+
-+				return { cpuusage: cpuusage };
-+			} else {
-+				return { cpuusage: error() };
-+			}
-+		}
-+	},
-+
-+	getETHInfo: {
-+		call: function() {
-+			if (!access('/sbin/ethinfo'))
-+				return {};
-+
-+			const fd = popen('/sbin/ethinfo');
-+			if (fd) {
-+				let ethinfo = fd.read('all');
-+				if (!ethinfo)
-+					ethinfo = '{}';
-+				ethinfo = json(ethinfo);
-+				fd.close();
-+
-+				return { ethinfo: ethinfo };
-+			} else {
-+				return { ethinfo: error() };
-+			}
-+		}
-+	},
-+
-+	getTempInfo: {
-+		call: function() {
-+			if (!access('/sbin/tempinfo'))
-+				return {};
-+
-+			const fd = popen('/sbin/tempinfo');
-+			if (fd) {
-+				let tempinfo = fd.read('all');
-+				fd.close();
-+
-+				return { tempinfo: tempinfo };
-+			} else {
-+				return { tempinfo: error() };
-+			}
-+		}
-+	},
-+
-+	getOnlineUsers: {
-+		call: function() {
-+			const fd = open('/proc/net/arp', 'r');
-+			if (fd) {
-+				let onlineusers = 0;
-+
-+				for (let line = fd.read('line'); length(line); line = fd.read('line'))
-+					if (match(trim(line), /^.*(0x2).*(br-lan)$/))
-+						onlineusers++;
-+
-+				fd.close();
-+
-+				return { onlineusers: onlineusers };
-+			} else {
-+				return { onlineusers: error() };
-+			}
-+		}
-+	},
-+
- 	getRealtimeStats: {
- 		args: { mode: 'interface', device: 'eth0' },
- 		call: function(request) {
-
 --- a/package/feeds/luci/luci-base/htdocs/luci-static/resources/network.js
 +++ b/package/feeds/luci/luci-base/htdocs/luci-static/resources/network.js
 @@ -4376,4 +4376,10 @@ WifiNetwork = baseclass.extend(/** @lends LuCI.network.WifiNetwork.prototype */
@@ -289,28 +170,19 @@
 
 --- a/package/feeds/luci/luci-base/root/usr/share/luci/menu.d/luci-base.json
 +++ b/package/feeds/luci/luci-base/root/usr/share/luci/menu.d/luci-base.json
-@@ -50,6 +50,24 @@
+@@ -59,6 +59,15 @@
  		}
  	},
  
-+	"admin/nas": {
-+		"title": "NAS",
-+		"order": 60,
-+		"action": {
-+			"type": "firstchild",
-+			"recurse": true
-+		}
-+	},
-+
 +	"admin/control": {
 +		"title": "Control",
-+		"order": 61,
++		"order": 51,
 +		"action": {
 +			"type": "firstchild",
 +			"recurse": true
 +		}
 +	},
 +
- 	"admin/vpn": {
- 		"title": "VPN",
- 		"order": 70,
+ 	"admin/network": {
+ 		"title": "Network",
+ 		"order": 60,
