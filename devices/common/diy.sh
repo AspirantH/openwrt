@@ -85,5 +85,5 @@ sed -i \
 
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-#sed -i 's/this.query == null && list.length == 0/false/g' feeds/luci/applications/luci-app-opkg/htdocs/luci-static/resources/view/system/opkg.js 2>/dev/null || true
+
 rm -rf package/feeds/packages/jool
