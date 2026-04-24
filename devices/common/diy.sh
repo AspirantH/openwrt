@@ -33,10 +33,8 @@ wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/
 wget -N  https://github.com/coolsnowwolf/lede/raw/refs/heads/master/package/system/fstools/patches/0200-ntfs3-with-utf8.patch -P package/system/fstools/patches/
 wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/config/Config-kernel.in -P config/
 
-rm -rf package/libs/openssl package/network/services/ppp feeds/luci/modules/{luci-base,luci-mod-network,luci-mod-status,luci-mod-system}
+rm -rf package/libs/openssl package/network/services/ppp
 git_clone_path openwrt-25.12 https://github.com/immortalwrt/immortalwrt package/libs/openssl package/network/services/ppp
-git_clone_path openwrt-25.12 https://github.com/coolsnowwolf/luci modules/luci-base modules/luci-mod-network  modules/luci-mod-status  modules/luci-mod-system
-mv -f modules/* feeds/luci/modules/
 
 echo "$(date +"%s")" >version.date
 sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
