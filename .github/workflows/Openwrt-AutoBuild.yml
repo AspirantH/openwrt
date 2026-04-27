@@ -221,6 +221,7 @@ jobs:
       id: compile
       run: |
         shopt -s extglob
+        df -hT
         cd openwrt
         sed -i '/define prepare_rootfs/a \	find $(1) -name "*-opkg" -delete' include/rootfs.mk
         echo -e "$(($(nproc)+1)) thread compile"
