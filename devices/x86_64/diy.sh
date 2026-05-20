@@ -6,9 +6,9 @@ SHELL_FOLDER=$(dirname $(readlink -f "$0"))
 
 sed -i 's/Os/O2/g' include/target.mk
 
-#git_clone_path master https://github.com/coolsnowwolf/lede target/linux/x86/files target/linux/x86/patches-6.12
+git_clone_path master https://github.com/coolsnowwolf/lede target/linux/x86/files target/linux/x86/patches-6.12
 
-#wget -N https://raw.githubusercontent.com/coolsnowwolf/lede/master/target/linux/x86/base-files/etc/board.d/02_network -P target/linux/x86/base-files/etc/board.d/
+wget -N https://raw.githubusercontent.com/coolsnowwolf/lede/master/target/linux/x86/base-files/etc/board.d/02_network -P target/linux/x86/base-files/etc/board.d/
 
 sed -i 's/kmod-r8169/kmod-r8168/' target/linux/x86/image/64.mk
 
