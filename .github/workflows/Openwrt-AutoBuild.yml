@@ -128,14 +128,6 @@ jobs:
             fi
         fi
 
-    - name: Free up disk space
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo mkdir -p -m 777 /mnt/openwrt/build_dir openwrt/staging_dir
-        ln -sf /mnt/openwrt/build_dir openwrt/build_dir
-        sudo ln -sf openwrt/staging_dir /mnt/openwrt/staging_dir
-
     - name: Load custom configuration
       run: |
         function git_clone_path() {
@@ -162,6 +154,7 @@ jobs:
           cd $rootdir
           }
         export -f git_clone_path
+        mkdir -p openwrt
         cp -rf devices/common/. openwrt/
         cp -rf devices/${{matrix.target}}/. openwrt/
         cp -rf devices openwrt/
@@ -271,7 +264,7 @@ jobs:
       continue-on-error: true
       with:
         token: ${{ secrets.TOKEN_OPENWRT }}
-        retain_days: 100
+        retain_days: 10
         keep_minimum_runs: 0
 
     - name: Remove old Releases
