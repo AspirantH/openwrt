@@ -208,7 +208,7 @@ jobs:
         cd openwrt
         mkdir -p files
         cp -rf ../devices/common/diy/package/base-files/files/* files/
-        chmod +x files/usr/bin/*
+        ##chmod +x files/usr/bin/*
 
     - name: Compile the firmware
       id: compile
