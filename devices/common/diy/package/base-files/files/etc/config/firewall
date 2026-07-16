@@ -32,6 +32,7 @@ config rule
 	option dest_port '68'
 	option target 'ACCEPT'
 	option family 'ipv4'
+	option enabled '1'
 
 config rule
 	option name 'Allow-Ping'
@@ -40,6 +41,7 @@ config rule
 	option icmp_type 'echo-request'
 	option family 'ipv4'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'Allow-IGMP'
@@ -47,6 +49,7 @@ config rule
 	option proto 'igmp'
 	option family 'ipv4'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'Allow-DHCPv6'
@@ -55,6 +58,7 @@ config rule
 	option dest_port '546'
 	option family 'ipv6'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'Allow-MLD'
@@ -67,6 +71,7 @@ config rule
 	list icmp_type '143/0'
 	option family 'ipv6'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'Allow-ICMPv6-Input'
@@ -85,6 +90,7 @@ config rule
 	list icmp_type 'router-solicitation'
 	list icmp_type 'time-exceeded'
 	list icmp_type 'unknown-header-type'
+	option enabled '1'
 
 config rule
 	option name 'Allow-ICMPv6-Forward'
@@ -100,6 +106,7 @@ config rule
 	list icmp_type 'packet-too-big'
 	list icmp_type 'time-exceeded'
 	list icmp_type 'unknown-header-type'
+	option enabled '1'
 
 config rule
 	option name 'Allow-IPSec-ESP'
@@ -107,6 +114,7 @@ config rule
 	option dest 'lan'
 	option proto 'esp'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'Allow-ISAKMP'
@@ -115,12 +123,14 @@ config rule
 	option dest_port '500'
 	option proto 'udp'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config rule
 	option name 'zerotier'
 	option src '*'
 	option dest_port '9993'
 	option target 'ACCEPT'
+	option enabled '1'
 
 config zone
 	option name 'zerotier'
@@ -175,11 +185,12 @@ config include 'zerotier_forward'
 	option chain 'forward'
 
 config rule
-	option name 'uhttpd'
+	option name 'uhttpd_verysync_aria2_ttyd'
 	option target 'ACCEPT'
 	option src 'wan'
 	option proto 'tcp'
-	option dest_port '9998 9999'
+	option dest_port '9998 9999 8886 6800 7681'
+	option enabled '1'
 
 config rule 'openlist'
 	option name 'openlist'
