@@ -1,0 +1,23 @@
+#!/bin/sh
+
+mountpoint -q /opt && {
+    rm -f /etc/rc.local
+    exit 0
+}
+
+for part in $(blkid -t TYPE=ext4 -o device 2>/dev/null); do
+    grep -q "^$part " /proc/mounts && continue
+
+    mkdir -p /opt
+    if mount -t ext4 "$part" /opt 2>/dev/null; then
+        uuid=$(blkid -s UUID -o value "$part")
+        [ -n "$uuid" ] && echo "UUID=$uuid /opt ext4 defaults 0 0" >> /etc/fstab
+        logger -t "first-opt" "Mounted $part to /opt"
+        break
+    else
+        logger -t "first-opt" "Failed to mount $part"
+    fi
+done
+
+mkdir -p /opt/cache
+rm -f /etc/rc.local
