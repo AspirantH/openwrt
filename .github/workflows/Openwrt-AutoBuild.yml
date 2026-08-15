@@ -57,9 +57,9 @@ jobs:
       continue-on-error: true
       if: contains(github.event.action, 'pkg')
       run: |
-        status=$(curl -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" -s "https://api.github.com/repos/learnscode/openwrt-packages/actions/runs" | jq -r '.workflow_runs[0].status')
+        status=$(curl -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" -s "https://api.github.com/repos/AspirantH/openwrt-packages/actions/runs" | jq -r '.workflow_runs[0].status')
         if [[ "$status" == "completed" ]]; then
-          curl -X POST https://api.github.com/repos/learnscode/openwrt-packages/dispatches \
+          curl -X POST https://api.github.com/repos/AspirantH/openwrt-packages/dispatches \
             -H "Accept: application/vnd.github.everest-preview+json" \
             -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
           --data '{"event_type": "update"}'
