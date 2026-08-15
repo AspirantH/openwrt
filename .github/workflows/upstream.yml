@@ -6,11 +6,11 @@
 # Blog: https://p3terx.com
 #=================================================
 
-name: Detect Packages Update & Build OpenWrt
+name: Check Packages Update & Build OpenWrt
 
 on:
   schedule:
-    - cron: '0 */8 * * *'
+    - cron: '0 */8 * * *'          # 每8小时触发一次
   workflow_dispatch:
 
 env:
@@ -301,6 +301,7 @@ jobs:
       - name: Save commit SHA cache
         if: steps.check-commit.outputs.changed == 'true' && success()
         uses: actions/cache/save@v4
+        continue-on-error: true
         with:
           path: .commit-cache
           key: commit-cache-${{ matrix.target }}
