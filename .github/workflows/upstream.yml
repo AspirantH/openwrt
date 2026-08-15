@@ -6,7 +6,7 @@
 # Blog: https://p3terx.com
 #=================================================
 
-name: Check Packages Update & Build OpenWrt
+name: Detect Packages Update & Build OpenWrt
 
 on:
   schedule:
@@ -40,7 +40,6 @@ jobs:
           restore-keys: commit-cache-${{ matrix.target }}
 
       - name: Check openwrt-packages commits
-        if: github.event_name == 'schedule'
         id: check-commit
         run: |
           latest_sha=$(curl -s -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
@@ -51,6 +50,15 @@ jobs:
           if [ -f .commit-cache/last_commit.txt ]; then
             cached_sha=$(cat .commit-cache/last_commit.txt)
           fi
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Manual trigger: forcing build and updating cache."
+            mkdir -p .commit-cache
+            echo "$latest_sha" > .commit-cache/last_commit.txt
+            echo "changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           if [ "$latest_sha" == "$cached_sha" ]; then
             echo "No new commit, skipping build."
             exit 0
