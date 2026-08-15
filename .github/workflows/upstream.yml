@@ -270,12 +270,12 @@ jobs:
       continue-on-error: true
       if: env.REPO_TOKEN && env.UPLOAD_FIRMWARE_FOR_RELEASE == 'true' && env.RELEASE_FILE != ''
       env:
-        GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
-      with:
-        files: "${{ env.RELEASE_FILE }}"
-        name: ${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}
-        tag_name: ${{ env.date }}_${{matrix.target}}
-        body: "OpenWrt firmware compiled from ${{ github.repository }}\n\n固件文件: ${{ env.RELEASE_FILE }}"
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        with:
+          files: "${{ env.RELEASE_FILE }}"
+          name: ${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}
+          tag_name: ${{ env.date }}_${{matrix.target}}
+          body: "OpenWrt firmware compiled from ${{ github.repository }}"
 
     - name: Delete workflow runs
       uses: GitRML/delete-workflow-runs@main
