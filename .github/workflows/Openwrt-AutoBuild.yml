@@ -12,7 +12,7 @@ name: Build OpenWrt
 #  repository_dispatch:
 on:
   schedule:
-    - cron: '0 18 */7 * *'  # Every 7 days at 02:00 China Standard Time (CST)
+    - cron: '0 18 */30 * *'  # Every 7 days at 02:00 China Standard Time (CST)
   workflow_dispatch:
 
 env:
