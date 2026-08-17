@@ -321,7 +321,7 @@ jobs:
           MSG="${MSG}状态：${BUILD_STATUS}\n"
           MSG="${MSG}上传：${UPLOAD_STATUS}"
 
-          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?title=OpenWrt 构建通知&desp=$(echo -e "$MSG" | sed 's/\n/%0A/g')"
+          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?title=🎉OpenWrt 构建通知&desp=$(echo -e "$MSG" | sed 's/\n/%0A/g')"
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
