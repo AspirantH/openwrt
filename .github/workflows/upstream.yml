@@ -9,8 +9,8 @@
 name: Check Packages Update & Build OpenWrt
 
 on:
-  schedule:
-    - cron: '0 */8 * * *'          # 每8小时触发一次
+#  schedule:
+#    - cron: '0 */8 * * *'
   workflow_dispatch:
 
 env:
