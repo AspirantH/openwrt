@@ -278,7 +278,7 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ secrets.TOKEN_OPENWRT }}
-          retain_days: 10
+          retain_days: 1
           keep_minimum_runs: 0
 
       - name: Save commit SHA cache
