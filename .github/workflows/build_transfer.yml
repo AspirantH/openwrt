@@ -17,6 +17,7 @@ on:
 
 env:
   REPO_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+  WECHAT_NOTICE: ${{ secrets.WECHAT_NOTICE }}
   TZ: Asia/Shanghai
 
 jobs:
@@ -287,6 +288,12 @@ jobs:
           name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }} (fallback)"
           tag_name: "${{ env.date }}_${{matrix.target}}_fallback"
           body: "Fallback release due to WebDAV upload failure."
+          
+      - name: WeChat NOTICE
+        continue-on-error: true
+        if: env.WECHAT_NOTICE
+        run: |
+        # [ steps.compile.outputs.status == 'success' ] && curl https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=🎉OpenWrt_${{ env.VERSION }}_${{matrix.target}}编译完成😋|| curl https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=❌OpenWrt_${{ env.VERSION }}_${{matrix.target}}编译失败😂
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
