@@ -240,7 +240,6 @@ jobs:
           df -hT
           cd openwrt
           sed -i '/define prepare_rootfs/a \	find $(1) -name "*-opkg" -delete' include/rootfs.mk
-          sed -i '/define prepare_rootfs/a \[Tab]rm -f $(1)/etc/init.d/led' include/rootfs.mk
           echo -e "$(($(nproc)+1)) thread compile"
           make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
           #make -j1 V=s
