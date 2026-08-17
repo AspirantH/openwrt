@@ -264,7 +264,9 @@ jobs:
           echo "RELEASE_FILE=$(pwd)/$release_name" >> $GITHUB_ENV
 
       - name: Upload firmware to WebDAV
+        id: upload-webdav
         if: env.RELEASE_FILE != ''
+        continue-on-error: true
         env:
           WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
           WEBDAV_USER: ${{ secrets.WEBDAV_USER }}
@@ -273,7 +275,18 @@ jobs:
         run: |
           curl -X MKCOL -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/" || true
           curl -T "$RELEASE_FILE" -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/$(basename "$RELEASE_FILE")"
+
+      - name: Upload to GitHub Release (fallback)
+        if: steps.upload-webdav.outcome == 'failure' && env.RELEASE_FILE != ''
+        uses: softprops/action-gh-release@master
         continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        with:
+          files: "${{ env.RELEASE_FILE }}"
+          name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }} (fallback)"
+          tag_name: "${{ env.date }}_${{matrix.target}}_fallback"
+          body: "Fallback release due to WebDAV upload failure."
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
@@ -281,7 +294,7 @@ jobs:
         with:
           token: ${{ secrets.TOKEN_OPENWRT }}
           retain_days: 1
-          keep_minimum_runs: 0
+          keep_minimum_runs: 1
 
       - name: Save commit SHA cache
         if: steps.check-commit.outputs.changed == 'true' && success()
