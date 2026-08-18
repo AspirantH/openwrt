@@ -293,34 +293,23 @@ jobs:
         continue-on-error: true
         if: env.WECHAT_NOTICE
         run: |
+          BASE_MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }}"
           if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
-            BUILD_STATUS="编译完成😋"
-          else
-            BUILD_STATUS="编译失败😂"
-          fi
-
-          UPLOAD_STATUS=""
-          if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-            UPLOAD_STATUS="📤 已上传至 WebDAV😋"
-          elif [[ "${{ steps.upload-webdav.outcome }}" == "failure" ]]; then
-            UPLOAD_STATUS="⚠️ WebDAV 上传失败😂"
-            if [[ "${{ steps.upload-release-fallback.outcome }}" == "success" ]]; then
-              UPLOAD_STATUS="${UPLOAD_STATUS}，已发布Github😋"
-            elif [[ "${{ steps.upload-release-fallback.outcome }}" == "failure" ]]; then
-              UPLOAD_STATUS="${UPLOAD_STATUS}，Github发布失败😂"
+            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+              MSG="🎉${BASE_MSG}编译完成，已上传WebDAV😋"
+            elif [[ "${{ steps.upload-webdav.outcome }}" == "failure" ]]; then
+              if [[ "${{ steps.upload-release-fallback.outcome }}" == "success" ]]; then
+                MSG="🎉${BASE_MSG}编译完成，已发布Github Release（WebDAV失败）😋"
+              else
+                MSG="⚠️${BASE_MSG}编译完成，但上传均失败😂"
+              fi
+            else
+              MSG="🎉${BASE_MSG}编译完成😋"
             fi
           else
-            UPLOAD_STATUS="⚠️ 编译失败😂"
+            MSG="❌${BASE_MSG}编译失败😂"
           fi
-
-          MSG="📦 OpenWrt 构建报告\n"
-          MSG="${MSG}目标平台：${{ matrix.target }}\n"
-          MSG="${MSG}固件版本：${{ env.VERSION }}\n"
-          MSG="${MSG}构建时间：${{ env.date2 }}\n"
-          MSG="${MSG}状态：${BUILD_STATUS}\n"
-          MSG="${MSG}上传：${UPLOAD_STATUS}"
-
-          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?title=🎉OpenWrt 构建通知&desp=$(echo -e "$MSG" | sed 's/\n/%0A/g')"
+          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=${MSG}"
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
