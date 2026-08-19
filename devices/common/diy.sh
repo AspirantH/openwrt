@@ -11,6 +11,23 @@ sed -i '/	refresh_config();/d' scripts/feeds
 
 sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.default
 
+rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,v2ray-plugin,xray-plugin,geoview,shadow-tls}
+git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
+
+rm -rf feeds/luci/applications/luci-app-homeproxy
+git clone https://github.com/VIKINGYFY/homeproxy package/homeproxy
+
+rm -rf feeds/packages/net/dae
+rm -rf feeds/packages/net/daed
+rm -rf feeds/luci/applications/luci-app-daed
+git clone https://github.com/kenzok8/openwrt-daede package/daede
+
+rm -rf feeds/packages/net/mosdns
+rm -rf feeds/luci/applications/luci-app-mosdns
+git clone https://github.com/sbwml/luci-app-mosdns package/mosdns
+
+git clone --depth 1 --single-branch https://github.com/breeze303/openwrt-podman package/podman
+
 ./scripts/feeds update -a
 ./scripts/feeds install -a -p AspirantH -f
 ./scripts/feeds install -a
