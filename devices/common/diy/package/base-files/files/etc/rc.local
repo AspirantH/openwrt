@@ -9,3 +9,4 @@ done
 
 mkdir -p /opt/cache
 rm -f /etc/rc.local
+rm -f /etc/init.d/led
