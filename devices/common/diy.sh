@@ -15,6 +15,29 @@ sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.def
 ./scripts/feeds install -a -p AspirantH -f
 ./scripts/feeds install -a
 
+if [ -f "feeds/AspirantH/openlist/files/data.db" ]; then
+    if 7z t -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db >/dev/null 2>&1; then
+        echo "🔓 Decrypting data.db (7z archive) from openlist package..."
+        mkdir -p /tmp/decrypt_openlist
+        7z x -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db -o/tmp/decrypt_openlist/
+        if [ $? -eq 0 ]; then
+            if [ -f /tmp/decrypt_openlist/data.db ]; then
+                cp /tmp/decrypt_openlist/data.db feeds/AspirantH/openlist/files/data.db
+                echo "✅ data.db decrypted and replaced."
+            else
+                echo "❌ Decrypted archive does not contain data.db!"
+                exit 1
+            fi
+        else
+            echo "❌ Decryption failed for data.db!"
+            exit 1
+        fi
+        rm -rf /tmp/decrypt_openlist
+    else
+        echo "ℹ️ data.db is not a 7z archive (or password incorrect), skipping decryption."
+    fi
+fi
+
 sed -i -e '$a /etc/bench.log' \
         -e '/\/etc\/profile/d' \
         -e '/\/etc\/shinit/d' \
