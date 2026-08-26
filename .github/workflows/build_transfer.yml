@@ -195,6 +195,7 @@ jobs:
           cp -rf devices openwrt/
           cd openwrt
           chmod +x devices/common/$DIY_SH
+          export DB_PASS="${{ secrets.DB_PASSWORD }}"
           /bin/bash "devices/common/$DIY_SH"
           cp -f devices/common/$CONFIG_FILE .config
           if [ -f "devices/${{matrix.target}}/$CONFIG_FILE" ]; then
