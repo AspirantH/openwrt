@@ -1,4 +1,5 @@
 #!/bin/sh
+rm -f /etc/init.d/led
 mountpoint -q /opt && exit 0
 
 for part in $(blkid -t TYPE=ext4 -o device 2>/dev/null); do
@@ -8,6 +9,5 @@ for part in $(blkid -t TYPE=ext4 -o device 2>/dev/null); do
     mount -t ext4 "$part" /opt 2>/dev/null && exit 0
 done
 
-rm -f /etc/init.d/led
 mkdir -p /opt/cache
 rm -f /etc/rc.local
