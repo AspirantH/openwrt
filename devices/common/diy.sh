@@ -53,7 +53,7 @@ echo "$(date +"%s")" >version.date
 sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
 sed -i "s/DEFAULT_PACKAGES:=/DEFAULT_PACKAGES:=luci-app-firewall luci-app-package-manager \
 luci-base luci-compat luci-lib-ipkg luci-lib-fs \
-wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr bash openssh-sftp-server block-mount resolveip ds-lite swconfig luci-app-filemanager /" include/target.mk
+wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ip-full kmod-ipt-conntrack bash tar block-mount resolveip ds-lite swconfig luci-app-filemanager /" include/target.mk
 
 sed -i "s/^.*vermagic$/\techo '1' > \$(LINUX_DIR)\/.vermagic/" include/kernel-defaults.mk
 
