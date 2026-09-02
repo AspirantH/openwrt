@@ -6,8 +6,15 @@ for part in $(blkid -t TYPE=ext4 -o device 2>/dev/null); do
     cur_mount=$(grep "^${part} " /proc/mounts | awk '{print $2}')
     [ -n "$cur_mount" ] && umount "$cur_mount" 2>/dev/null
     mkdir -p /opt
-    mount -t ext4 "$part" /opt 2>/dev/null && exit 0
+    mount -t ext4 "$part" /opt
 done
 
+umount /mnt/nvme0n1p3
+for s in $(uci show fstab | grep ".target='/mnt/nvme0n1p3'" | cut -d. -f2); do uci delete fstab.$s; done
+uci commit fstab
+/etc/init.d/fstab reload
+rmdir /mnt/nvme0n1p3
+
 mkdir -p /opt/cache
-rm -f /etc/rc.local
+cat /dev/null > /etc/rc.local
+exit 0
