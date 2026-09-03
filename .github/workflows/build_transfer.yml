@@ -301,19 +301,7 @@ jobs:
         continue-on-error: true
         if: env.WECHAT_NOTICE
         run: |
-          if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
-            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-              MSG="🎉OpenWrt已上传WebDAV😋"
-            elif [[ "${{ steps.upload-webdav.outcome }}" == "failure" ]]; then
-              if [[ "${{ steps.upload-release-fallback.outcome }}" == "success" ]]; then
-                MSG="🎉OpenWrt编译完成，已发布Github Release（WebDAV失败）😋"
-              else
-                MSG="⚠️OpenWrt上传失败🥲"
-              fi
-            else
-              MSG="🎉OpenWrt编译完成😋"
-            fi
-          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=${MSG}"
+          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text="🎉OpenWrt已上传WebDAV😋""
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
