@@ -2,14 +2,14 @@
 #=================================================
 shopt -s extglob
 
-sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
-sed -i "/telephony/d" feeds.conf.default
+##sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
+##sed -i "/telephony/d" feeds.conf.default
 
-sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
+##sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
 
-sed -i '/	refresh_config();/d' scripts/feeds
+##sed -i '/	refresh_config();/d' scripts/feeds
 
-sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.default
+##sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.default
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a -p AspirantH -f
@@ -50,7 +50,7 @@ sed -i "s/192.168.1/10.0.0/" package/base-files/files/bin/config_generate
 sed -i "s#false; \\\#true; \\\#" include/download.mk
 
 echo "$(date +"%s")" >version.date
-sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
+##sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
 sed -i "s/DEFAULT_PACKAGES:=/DEFAULT_PACKAGES:=luci-app-firewall luci-app-package-manager \
 luci-base luci-compat luci-lib-ipkg kmod-nvme libev libpam libtirpc liblzma libnetsnmp kmod-oaf kmod-ipt-conntrack libubox libubus libuci libpthread libjson-c libblobmsg-json libuci-lua libsqlite3 libcurl luci-lib-fs \
 wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ip-full bash tar luci-lib-jsonc appfilter block-mount resolveip ds-lite swconfig luci-app-filemanager /" include/target.mk
@@ -92,4 +92,4 @@ sed -i \
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
-rm -rf package/feeds/packages/jool
+##rm -rf package/feeds/packages/jool
