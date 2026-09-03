@@ -303,19 +303,16 @@ jobs:
         run: |
           if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
             if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-              MSG="🎉OpenWrt编译完成，已上传WebDAV😋"
+              MSG="🎉OpenWrt已上传WebDAV😋"
             elif [[ "${{ steps.upload-webdav.outcome }}" == "failure" ]]; then
               if [[ "${{ steps.upload-release-fallback.outcome }}" == "success" ]]; then
                 MSG="🎉OpenWrt编译完成，已发布Github Release（WebDAV失败）😋"
               else
-                MSG="⚠️OpenWrt编译完成，但上传失败🥲"
+                MSG="⚠️OpenWrt上传失败🥲"
               fi
             else
               MSG="🎉OpenWrt编译完成😋"
             fi
-          else
-            MSG="❌OpenWrt编译失败😂"
-          fi
           curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=${MSG}"
 
       - name: Delete workflow runs
