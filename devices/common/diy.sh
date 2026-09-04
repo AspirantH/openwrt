@@ -5,7 +5,7 @@ shopt -s extglob
 sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
-sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
+##sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
 
 sed -i '/	refresh_config();/d' scripts/feeds
 
