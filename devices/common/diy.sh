@@ -52,7 +52,7 @@ sed -i "s#false; \\\#true; \\\#" include/download.mk
 echo "$(date +"%s")" >version.date
 sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
 sed -i "s/DEFAULT_PACKAGES:=/DEFAULT_PACKAGES:=luci-app-firewall luci-app-package-manager \
-luci-base luci-compat kmod-nvme libev libpam libtirpc liblzma libcurl luci-lib-fs \
+luci-base luci-compat kmod-nvme libcurl luci-lib-fs \
 wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ca-bundle ip-full ruby ruby-yaml unzip bash tar block-mount resolveip ds-lite swconfig luci-app-filemanager /" include/target.mk
 
 sed -i "s/^.*vermagic$/\techo '1' > \$(LINUX_DIR)\/.vermagic/" include/kernel-defaults.mk
