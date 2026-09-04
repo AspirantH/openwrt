@@ -34,14 +34,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore last commit SHA cache
-        id: cache-commit-restore
-        uses: actions/cache/restore@v4
-        with:
-          path: .commit-cache
-          key: commit-cache-${{ matrix.target }}
-          restore-keys: commit-cache-${{ matrix.target }}
-
       - name: Check openwrt-packages commits
         id: check-commit
         run: |
@@ -91,18 +83,6 @@ jobs:
           echo "UPLOAD_FIRMWARE_TO_WETRANSFER=${UPLOAD_FIRMWARE_TO_WETRANSFER}" >> $GITHUB_ENV
           sed -i "1a REPO_TOKEN=${{ secrets.TOKEN_OPENWRT }}" ${{ github.workspace }}/devices/common/diy.sh
           sed -i "1a TARGET=${{matrix.target}}" ${{ github.workspace }}/devices/common/diy.sh
-
-      - name: Trigger Packages Update
-        continue-on-error: true
-        if: contains(github.event.action, 'pkg')
-        run: |
-          status=$(curl -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" -s "https://api.github.com/repos/AspirantH/openwrt-packages/actions/runs" | jq -r '.workflow_runs[0].status')
-          if [[ "$status" == "completed" ]]; then
-            curl -X POST https://api.github.com/repos/AspirantH/openwrt-packages/dispatches \
-              -H "Accept: application/vnd.github.everest-preview+json" \
-              -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
-            --data '{"event_type": "update"}'
-          fi
 
       - name: Free disk space
         uses: coder-xiaomo/free-disk-space@main
@@ -271,6 +251,21 @@ jobs:
           cp "$firmware_file" "$release_name"
           echo "RELEASE_FILE=$(pwd)/$release_name" >> $GITHUB_ENV
 
+      - name: Create release
+        id: create-release
+        if: env.RELEASE_FILE != ''
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        with:
+          files: "${{ env.RELEASE_FILE }}"
+          name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}"
+          tag_name: "${{ env.date }}_${{matrix.target}}"
+          body: "OpenWrt firmware compiled from ${{ github.repository }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
       - name: Upload firmware to WebDAV
         id: upload-webdav
         if: env.RELEASE_FILE != ''
@@ -284,24 +279,29 @@ jobs:
           curl -X MKCOL -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/" || true
           curl -T "$RELEASE_FILE" -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/$(basename "$RELEASE_FILE")"
 
-      - name: Upload to GitHub Release (fallback)
-        id: upload-release-fallback
-        if: steps.upload-webdav.outcome == 'failure' && env.RELEASE_FILE != ''
-        uses: softprops/action-gh-release@master
-        continue-on-error: true
+      - name: Delete
+        if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
-        with:
-          files: "${{ env.RELEASE_FILE }}"
-          name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }} (fallback)"
-          tag_name: "${{ env.date }}_${{matrix.target}}_fallback"
-          body: "Fallback release due to WebDAV upload failure."
+        run: |
+          TAG_NAME="${{ env.date }}_${{matrix.target}}"
+          echo "Deleting release ${TAG_NAME} (WebDAV succeeded) ..."
+          gh release delete "${TAG_NAME}" -y --repo "${{ github.repository }}"
 
       - name: WeChat NOTICE
         continue-on-error: true
         if: env.WECHAT_NOTICE
         run: |
-          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text="🎉OpenWrt已上传WebDAV😋""
+          if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
+            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+              MSG="🎉OpenWrt已更新😋"
+            else
+              MSG="🎉OpenWrt已更新至github😋"
+            fi
+          else
+            MSG="❌OpenWrt编译失败😂"
+          fi
+          curl -s "https://sctapi.ftqq.com/${{ secrets.WECHAT_NOTICE }}.send?text=${MSG}"
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
