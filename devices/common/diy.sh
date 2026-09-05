@@ -91,5 +91,5 @@ sed -i \
 
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-sed '/^apk =/,/--preserve-env/{ /--preserve-env/ { /--force-overwrite/! s/$/ \\\n--force-overwrite/; }; }' include/rootfs.mk
+sed -i '/^apk =/,/--preserve-env/{ /--preserve-env/ { /--force-overwrite/! s/$/ \\\n--force-overwrite/; }; }' include/rootfs.mk
 rm -rf package/feeds/packages/jool
