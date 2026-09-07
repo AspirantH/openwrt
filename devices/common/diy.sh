@@ -5,7 +5,7 @@ shopt -s extglob
 sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
-##sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
+sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
 
 sed -i '/	refresh_config();/d' scripts/feeds
 
@@ -91,5 +91,20 @@ sed -i \
 
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+
+
+LUCI_MOD_SYSTEM="feeds/luci/modules/luci-mod-system"
+if [ -d "$LUCI_MOD_SYSTEM" ]; then
+    rm -rf "$LUCI_MOD_SYSTEM/htdocs/luci-static/resources/view/system/leds.js"
+    rm -rf "$LUCI_MOD_SYSTEM/htdocs/luci-static/resources/view/system/led-trigger/"
+    sed -i '/"admin\/system\/leds": {/,/^	},/d' \
+        "$LUCI_MOD_SYSTEM/root/usr/share/luci/menu.d/luci-mod-system.json"
+    sed -i '/"fs": { "\/sys\/class\/leds": "directory" }/,/^	},/d' \
+        "$LUCI_MOD_SYSTEM/root/usr/share/luci/menu.d/luci-mod-system.json"
+    sed -i '/"init": "led",/d' \
+        "$LUCI_MOD_SYSTEM/root/usr/share/ucitrack/luci-mod-system-system.json"
+    sed -i 's/"getLEDs", //g' \
+        "$LUCI_MOD_SYSTEM/root/usr/share/rpcd/acl.d/luci-mod-system.json"
+fi
 
 rm -rf package/feeds/packages/jool
