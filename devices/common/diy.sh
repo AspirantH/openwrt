@@ -106,9 +106,4 @@ if [ -d "$LUCI_MOD_SYSTEM" ]; then
         "$LUCI_MOD_SYSTEM/root/usr/share/rpcd/acl.d/luci-mod-system.json"
 fi
 
-DISTFEEDS="package/base-files/files/etc/apk/repositories.d/distfeeds.list"
-if [ -f "$DISTFEEDS" ]; then
-    sed -i '/AspirantH/d' "$DISTFEEDS"
-fi
-
 rm -rf package/feeds/packages/jool
