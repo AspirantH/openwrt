@@ -105,5 +105,5 @@ if [ -d "$LUCI_MOD_SYSTEM" ]; then
     sed -i 's/"getLEDs", //g' \
         "$LUCI_MOD_SYSTEM/root/usr/share/rpcd/acl.d/luci-mod-system.json"
 fi
-sed -i '/AspirantH/d' "files/etc/apk/repositories.d/distfeeds.list"
+
 rm -rf package/feeds/packages/jool
