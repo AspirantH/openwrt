@@ -218,6 +218,7 @@ jobs:
           cd openwrt
           mkdir -p files
           cp -rf ../devices/common/diy/package/base-files/files/* files/
+          sed -i '/AspirantH/d' "files/etc/apk/repositories.d/distfeeds.list"
 
       - name: Compile the firmware
         id: compile
