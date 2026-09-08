@@ -1,1 +1,0 @@
-0 0 * * * /sbin/sysupgrade -b /alist/💻APPS/💻🐧Private/$(date +\%Y\%m\%d)-backup.tar.gz
