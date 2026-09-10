@@ -242,8 +242,7 @@ jobs:
           cp $GITHUB_WORKSPACE/openwrt/.config ${{matrix.target}}.config || true
           cp $GITHUB_WORKSPACE/openwrt/build_dir/target-*/linux-*/linux-*/.config ${{matrix.target}}_kernel.config || true
           Emoji=("🎉" "🤞" "✨" "🎁" "🎈" "🎄" "🎨" "💋" "🍓" "🍕" "🍉" "💐" "🌴" "🚀" "🛸" "🗽" "⛅" "🌈" "🔥" "⛄" "🐶" "🏅" "🦄" "🐤")
-          RANDOM_INDEX=$((RANDOM % ${#Emoji[@]}))
-          EMOJI=${Emoji[$RANDOM_INDEX]}
+          EMOJI=$(printf "%s\n" "${Emoji[@]}" | shuf -n 1)
           echo "EMOJI=${EMOJI}" >> $GITHUB_ENV
           firmware_file=$(find . -name "*-squashfs-combined-efi.img.gz" | head -n1)
           build_date=$(date +%Y%m%d)
