@@ -17,7 +17,7 @@ on:
 
 env:
   REPO_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
-  WECHAT_NOTICE: ${{ secrets.WECHAT_NOTICE }}
+  WPUSH: ${{ secrets.WPUSH }}
   TZ: Asia/Shanghai
 
 jobs:
@@ -265,7 +265,7 @@ jobs:
           prerelease: false
           generate_release_notes: false
 
-      - name: Upload firmware to WebDAV
+      - name: Upload to WebDAV
         id: upload-webdav
         if: env.RELEASE_FILE != ''
         continue-on-error: true
@@ -278,33 +278,78 @@ jobs:
           curl -X MKCOL -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/" || true
           curl -T "$RELEASE_FILE" -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/$(basename "$RELEASE_FILE")"
 
-      - name: Delete
+      - name: Clean
         if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
         run: |
           TAG_NAME="${{ env.date }}_${{matrix.target}}"
           echo "Deleting release ${TAG_NAME} (WebDAV succeeded) ..."
-          gh release delete "${TAG_NAME}" -y --repo "${{ github.repository }}"
+          gh release delete "${TAG_NAME}" -y --cleanup-tag --repo "${{ github.repository }}"
 
       - name: WPush NOTICE
         continue-on-error: true
         if: env.WPUSH
         run: |
           if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
-            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-              MSG="🎉OpenWrt已更新至WEBDAV😋"
+            if [[ -n "${{ env.RELEASE_FILE }}" ]]; then
+              FILENAME=$(basename "${{ env.RELEASE_FILE }}")
+              FILESIZE=$(du -h "${{ env.RELEASE_FILE }}" | cut -f1)
+              if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+                UPLOAD_STATUS="✅ WebDAV 上传成功"
+                DOWNLOAD_LINK="${{ secrets.WEBDAV_URL }}${{ secrets.WEBDAV_PATH }}/${FILENAME}"
+              else
+                UPLOAD_STATUS="❌ WebDAV 上传失败（已保留 GitHub Release）"
+                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.date }}_${{ matrix.target }}"
+              fi
             else
-              MSG="🎉OpenWrt已更新至github😋"
+              FILENAME="未生成固件文件"
+              FILESIZE="N/A"
+              UPLOAD_STATUS="⚠️ 无固件文件"
+              DOWNLOAD_LINK="请查看 Actions 日志"
             fi
+
+            cd openwrt
+            PLUGINS=$(grep -E '^CONFIG_PACKAGE_(luci-app-|luci-theme-|zerotier|aria2|openlist)=' .config \
+                      | grep '=y' | sed 's/CONFIG_PACKAGE_//;s/=y//' | head -n 10)
+            if [[ -n "$PLUGINS" ]]; then
+              PLUGIN_LIST=$(echo "$PLUGINS" | sed 's/^/- `/; s/$/`/')
+            else
+              PLUGIN_LIST="> （未提取到插件列表）"
+            fi
+
+            MSG=$(printf '%s\n' \
+              "## 🎉 OpenWrt 固件编译完成" \
+              "" \
+              "| 项目 | 信息 |" \
+              "| --- | --- |" \
+              "| **设备** | ${{ matrix.target }} |" \
+              "| **编译日期** | ${{ env.date2 }} |" \
+              "| **固件文件** | \`${FILENAME}\` |" \
+              "| **文件大小** | ${FILESIZE} |" \
+              "| **上传状态** | ${UPLOAD_STATUS} |" \
+              "| **下载地址** | [点击下载](${DOWNLOAD_LINK}) |" \
+              "" \
+              "#### 主要插件" \
+              "${PLUGIN_LIST}" \
+              "" \
+              "> 如需完整插件列表，请查看 \`.config\` 文件。")
+
+            TITLE="✅ OpenWrt 编译成功"
           else
-            MSG="❌OpenWrt编译失败😂"
+            MSG=$(printf '%s\n' \
+              "## ❌ OpenWrt 编译失败" \
+              "" \
+              "- **设备**：${{ matrix.target }}" \
+              "- **时间**：${{ env.date2 }}" \
+              "- **日志**：[点击查看](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})")
+            TITLE="❌ OpenWrt 编译失败"
           fi
-          TITLE="🎉OpenWrt编译通知"
+
           curl -X POST 'https://api.wpush.cn/api/v1/send' \
-            -d "apikey=${{ secrets.WPUSH }}" \
-            -d "title=${TITLE}" \
-            -d "content=${MSG}"
+            --data-urlencode "apikey=${{ secrets.WPUSH }}" \
+            --data-urlencode "title=${TITLE}" \
+            --data-urlencode "content=${MSG}"
 
       - name: Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
