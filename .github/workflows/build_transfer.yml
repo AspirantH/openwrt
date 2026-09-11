@@ -362,7 +362,7 @@ jobs:
               "| **固件文件** | \`${FILENAME}\` |" \
               "| **文件大小** | ${FILESIZE} |" \
               "| **上传状态** | ${UPLOAD_STATUS} |" \
-              "| **下载地址** | [点击下载](${DOWNLOAD_LINK}) |" \
+              "| **下载地址** | ${DOWNLOAD_LINK} |" \
               "" \
               "#### 主要插件" \
               "${PLUGIN_LIST}" \
@@ -376,7 +376,7 @@ jobs:
               "" \
               "- **设备**：${{ matrix.target }}" \
               "- **时间**：${{ env.date2 }}" \
-              "- **日志**：[点击查看](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})")
+              "- **日志**：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
             TITLE="❌ OpenWrt 编译失败"
           fi
 
