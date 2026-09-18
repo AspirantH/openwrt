@@ -328,14 +328,14 @@ jobs:
         run: |
           if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
             if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-              MSG="🎉OpenWrt已更新至WEBDAV😋"
+              MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译完成，已更新至 WEBDAV"
             else
-              MSG="🎉OpenWrt已更新至github😋"
+              MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译完成，已更新至 GitHub"
             fi
           else
-            MSG="❌OpenWrt编译失败😂"
+            MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译失败"
           fi
-          TITLE="🎉OpenWrt编译通知"
+          TITLE="OpenWrt 编译通知"
           curl -X POST 'https://api.wpush.cn/api/v1/send' \
             -d "apikey=${{ secrets.WPUSH }}" \
             -d "title=${TITLE}" \
