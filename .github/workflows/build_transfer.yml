@@ -327,15 +327,61 @@ jobs:
         if: env.WPUSH
         run: |
           if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
-            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
-              MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译完成，已更新至 WEBDAV"
+            if [[ -n "${{ env.RELEASE_FILE }}" ]]; then
+              FILENAME=$(basename "${{ env.RELEASE_FILE }}")
+              FILESIZE=$(du -h "${{ env.RELEASE_FILE }}" | cut -f1)
+              if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+                UPLOAD_STATUS="WebDAV 上传成功"
+                DOWNLOAD_LINK="${{ secrets.WEBDAV_URL }}${{ secrets.WEBDAV_PATH }}/${FILENAME}"
+              else
+                UPLOAD_STATUS="WebDAV 上传超时（已发布至 GitHub Release）"
+                DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.date }}_${{ matrix.target }}"
+              fi
             else
-              MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译完成，已更新至 GitHub"
+              FILENAME="未生成固件文件"
+              FILESIZE="N/A"
+              UPLOAD_STATUS="无固件文件"
+              DOWNLOAD_LINK="请查看 Actions 日志"
             fi
+
+            cd openwrt
+            PLUGINS=$(grep -E '^CONFIG_PACKAGE_(luci-app-|luci-theme-|zerotier|aria2|openlist)=' .config \
+                      | grep '=y' | sed 's/CONFIG_PACKAGE_//;s/=y//' | head -n 10)
+            if [[ -n "$PLUGINS" ]]; then
+              PLUGIN_LIST=$(echo "$PLUGINS" | sed 's/^/- /')
+            else
+              PLUGIN_LIST="（未提取到插件列表）"
+            fi
+
+            TITLE="OpenWrt 编译成功"
+            MSG=$(printf '%s\n' \
+              "## OpenWrt 固件编译完成" \
+              "" \
+              "| 项目 | 信息 |" \
+              "| --- | --- |" \
+              "| **设备** | ${{ matrix.target }} |" \
+              "| **编译日期** | ${{ env.date2 }} |" \
+              "| **固件文件** | ${FILENAME} |" \
+              "| **文件大小** | ${FILESIZE} |" \
+              "| **上传状态** | ${UPLOAD_STATUS} |" \
+              "" \
+              "**下载地址：**" \
+              "" \
+              "${DOWNLOAD_LINK}" \
+              "" \
+              "**主要插件：**" \
+              "" \
+              "${PLUGIN_LIST}")
           else
-            MSG="OpenWrt_${{ env.VERSION }}_${{ matrix.target }} 编译失败"
+            TITLE="OpenWrt 编译失败"
+            MSG=$(printf '%s\n' \
+              "## OpenWrt 编译失败" \
+              "" \
+              "- **设备**：${{ matrix.target }}" \
+              "- **时间**：${{ env.date2 }}" \
+              "- **日志**：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           fi
-          TITLE="OpenWrt 编译通知"
+
           curl -X POST 'https://api.wpush.cn/api/v1/send' \
             -d "apikey=${{ secrets.WPUSH }}" \
             -d "title=${TITLE}" \
