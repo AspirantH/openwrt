@@ -310,13 +310,46 @@ jobs:
           WEBDAV_PASS: ${{ secrets.WEBDAV_PASS }}
           WEBDAV_PATH: ${{ secrets.WEBDAV_PATH }}
         run: |
-          curl -sS -X MKCOL -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
-            --max-time 60 \
-            "${WEBDAV_URL}${WEBDAV_PATH}/" || true
-          curl -sS -T "$RELEASE_FILE" -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
-            --max-time 600 \
-            --retry 2 --retry-delay 5 --retry-connrefused \
-            "${WEBDAV_URL}${WEBDAV_PATH}/$(basename "$RELEASE_FILE")"
+          set -uo pipefail
+          WEBDAV_URL="${WEBDAV_URL%/}"
+          WEBDAV_PATH="${WEBDAV_PATH#/}"
+          WEBDAV_PATH="${WEBDAV_PATH%/}"
+
+          if [ -n "$WEBDAV_PATH" ]; then
+            REMOTE_DIR="${WEBDAV_URL}/${WEBDAV_PATH}"
+          else
+            REMOTE_DIR="${WEBDAV_URL}"
+          fi
+
+          FILENAME="$(basename "$RELEASE_FILE")"
+          ENCODED_FILENAME="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FILENAME")"
+          REMOTE_FILE="${REMOTE_DIR}/${ENCODED_FILENAME}"
+
+          echo "RELEASE_FILE=$RELEASE_FILE"
+          echo "REMOTE_FILE=$REMOTE_FILE"
+          FILE_SIZE=$(stat -c%s "$RELEASE_FILE")
+          echo "文件大小: $FILE_SIZE bytes"
+          echo "==> 开始上传固件 ($((FILE_SIZE/1024/1024)) MB)..."
+
+          set +e
+          curl -fS --progress-bar \
+            -T "$RELEASE_FILE" \
+            -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
+            --connect-timeout 60 \
+            --max-time 3600 \
+            --speed-time 120 --speed-limit 1024 \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            -H "Expect: 100-continue" \
+            "${REMOTE_FILE}"
+          CURL_RC=$?
+          set -e
+
+          if [ $CURL_RC -ne 0 ]; then
+            echo "::error::WebDAV 上传失败，curl 退出码=$CURL_RC"
+            exit $CURL_RC
+          fi
+          echo "✅ WebDAV 上传完成"
+
 
       - name: Clean
         if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
