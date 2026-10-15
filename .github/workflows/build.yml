@@ -1,0 +1,533 @@
+#=================================================
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+# Lisence: MIT
+# Author: P3TERX
+# Blog: https://p3terx.com
+#=================================================
+
+name: build iso test
+
+on:
+#  schedule:
+#    - cron: '0 */8 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [packages-updated]
+
+env:
+  REPO_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+  WECHAT_NOTICE: ${{ secrets.WECHAT_NOTICE }}
+  WPUSH: ${{ secrets.WPUSH }}
+  TZ: Asia/Shanghai
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: Check upstream updates
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Restore commit cache
+        id: restore-commit-cache
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: .commit-cache
+          key: commit-cache-main-${{ github.run_id }}
+          restore-keys: |
+            commit-cache-main-
+
+      - name: Check openwrt-packages commits
+        id: check
+        run: |
+          latest_sha=$(curl -s -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
+            https://api.github.com/repos/AspirantH/openwrt-packages/commits?per_page=1 | \
+            jq -r '.[0].sha')
+
+          if [ -z "$latest_sha" ] || [ "$latest_sha" == "null" ]; then
+            echo "Failed to fetch latest SHA, forcing build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          cached_sha=""
+          if [ -f .commit-cache/last_commit.txt ]; then
+            cached_sha=$(cat .commit-cache/last_commit.txt)
+          fi
+          echo "latest_sha=$latest_sha"
+          echo "cached_sha=$cached_sha"
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] || [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "Manual/external trigger: forcing build and updating cache."
+            mkdir -p .commit-cache
+            echo "$latest_sha" > .commit-cache/last_commit.txt
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$latest_sha" == "$cached_sha" ]; then
+            echo "No new commit, skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "New commit detected: $latest_sha (cached: $cached_sha)"
+            mkdir -p .commit-cache
+            echo "$latest_sha" > .commit-cache/last_commit.txt
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Save commit cache
+        if: steps.check.outputs.should_build == 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: .commit-cache
+          key: commit-cache-main-${{ github.run_id }}
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    name: Build ${{matrix.target}}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ["${{ github.event.client_payload.target || 'x86_64' }}"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Load Settings.ini
+        run: |
+          echo ${{matrix.target}}
+          source "${{ github.workspace }}/devices/common/settings.ini"
+          if [ -f "devices/${{matrix.target}}/settings.ini" ]; then
+            source "${{ github.workspace }}/devices/${{matrix.target}}/settings.ini"
+          fi
+          echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
+          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
+          echo "CONFIG_FILE=${CONFIG_FILE}" >> $GITHUB_ENV
+          echo "DIY_SH=${DIY_SH}" >> $GITHUB_ENV
+          echo "FREE_UP_DISK=${FREE_UP_DISK}" >> $GITHUB_ENV
+          echo "UPLOAD_BIN_DIR_FOR_ARTIFACT=${UPLOAD_BIN_DIR_FOR_ARTIFACT}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_FOR_ARTIFACT=${UPLOAD_FIRMWARE_FOR_ARTIFACT}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_FOR_RELEASE=${UPLOAD_FIRMWARE_FOR_RELEASE}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_TO_COWTRANSFER=${UPLOAD_FIRMWARE_TO_COWTRANSFER}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_TO_WETRANSFER=${UPLOAD_FIRMWARE_TO_WETRANSFER}" >> $GITHUB_ENV
+          sed -i "1a REPO_TOKEN=${{ secrets.TOKEN_OPENWRT }}" ${{ github.workspace }}/devices/common/diy.sh
+          sed -i "1a TARGET=${{matrix.target}}" ${{ github.workspace }}/devices/common/diy.sh
+
+      - name: Free disk space
+        uses: coder-xiaomo/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget dwarves \
+          llvm python3-pyelftools libpython3-dev aria2 jq qemu-utils ccache rename \
+          libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+          xorriso mtools dosfstools
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Get current date
+        id: date
+        run: |
+          echo "date=$(date +'%m/%d_%Y_%H/%M')" >> $GITHUB_ENV
+          echo "date2=$(date +'%m/%d %Y')" >> $GITHUB_ENV
+          VERSION="$(echo "${{github.event.action}}" | grep -Eo " [0-9.]+" | sed -e 's/ //')" || true
+          [ "$VERSION" ] && echo "VERSION=$VERSION" >> $GITHUB_ENV || echo "VERSION=$(date +'%m.%d')" >> $GITHUB_ENV
+
+      - name: Clone source code
+        run: |
+          set -x
+          TAG_INFO="$(curl -gs -H 'Content-Type: application/json' \
+             -H "Authorization: Bearer ${{ secrets.TOKEN_OPENWRT }}" \
+             -X POST -d '{ "query": "query {repository(owner: \"openwrt\", name: \"openwrt\") {refs(refPrefix: \"refs/tags/\", first: 4, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {nodes {name target { ... on Tag {tagger {date}}}}}}}"}' https://api.github.com/graphql)"
+          TAG_DATE="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[] | select(.name | startswith("v25")) | .target.tagger.date' | head -n 1)"
+          if [[ $(( ($(date +%s) - $(date -d "$TAG_DATE" +%s)) / 86400 )) -lt 10 || "${{ contains(github.event.action, 'tags') }}" == "true" ]]; then
+          REPO_BRANCH="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[].name' | grep v25 | head -n 1)"
+          #REPO_BRANCH="openwrt-25.12"
+          else
+          REPO_BRANCH="openwrt-25.12"
+          fi
+
+          if [[ ! "${{ env.REPO_BRANCH }}" && "$REPO_URL" == "https://github.com/openwrt/openwrt" ]]; then
+              git clone $REPO_URL -b $REPO_BRANCH openwrt
+          elif [[ ! "${{ env.REPO_BRANCH }}" ]]; then
+              git clone $REPO_URL openwrt
+          else
+              REPO_BRANCH="${{env.REPO_BRANCH}}"
+              if [[ ${#REPO_BRANCH} -lt 10 ]]; then
+                  git clone $REPO_URL -b ${REPO_BRANCH} openwrt
+              else
+                  git clone $REPO_URL openwrt
+                  cd openwrt
+                  git checkout ${REPO_BRANCH}
+              fi
+          fi
+
+      - name: Load custom configuration
+        run: |
+          function git_clone_path() {
+            trap 'rm -rf "$tmpdir"' EXIT
+            branch="$1" rurl="$2" mv="$3"
+            [[ "$mv" != "mv" ]] && shift 2 || shift 3
+            rootdir="$PWD"
+            tmpdir="$(mktemp -d)" || exit 1
+            if [ ${#branch} -lt 10 ]; then
+            git clone -b "$branch" --depth 1 --filter=blob:none --sparse "$rurl" "$tmpdir"
+            cd "$tmpdir"
+            else
+            git clone --filter=blob:none --sparse "$rurl" "$tmpdir"
+            cd "$tmpdir"
+            git checkout $branch
+            fi
+            if [ "$?" != 0 ]; then
+              echo "error on $rurl"
+              exit 1
+            fi
+            git sparse-checkout init --cone
+            git sparse-checkout set $@
+            [[ "$mv" != "mv" ]] && cp -rn ./* $rootdir/ || mv -n $@/* $rootdir/$@/
+            cd $rootdir
+            }
+          export -f git_clone_path
+          mkdir -p openwrt
+          cp -rf devices/common/. openwrt/
+          cp -rf devices/${{matrix.target}}/. openwrt/
+          cp -rf devices openwrt/
+          cd openwrt
+          chmod +x devices/common/$DIY_SH
+          export DB_PASS="${{ secrets.DB_PASSWORD }}"
+          /bin/bash "devices/common/$DIY_SH"
+          cp -f devices/common/$CONFIG_FILE .config
+          if [ -f "devices/${{matrix.target}}/$CONFIG_FILE" ]; then
+            echo >> .config
+            cat devices/${{matrix.target}}/$CONFIG_FILE >> .config
+          fi
+          if [ -f "devices/${{matrix.target}}/$DIY_SH" ]; then
+            chmod +x devices/${{matrix.target}}/$DIY_SH
+            echo "/bin/bash devices/${{matrix.target}}/$DIY_SH"
+            /bin/bash "devices/${{matrix.target}}/$DIY_SH"
+          fi
+          cp -Rf ./diy/* ./ || true
+
+      - name: Apply patches
+        run: |
+          cd openwrt
+          cp -rn devices/common/patches devices/${{matrix.target}}/
+          if [ -n "$(ls -A devices/${{matrix.target}}/*.bin.patch 2>/dev/null)" ]; then
+            git apply devices/${{matrix.target}}/patches/*.bin.patch
+          fi
+          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.revert.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' -R --no-backup-if-mismatch -p1 -F 1 -i '%'"
+          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.patch' ! -name '*.revert.patch' ! -name '*.bin.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
+
+      - name: Defconfig
+        run: |
+          cd openwrt
+          make defconfig
+          if [[ ! "${{matrix.target}}" =~ (amlogic_meson8b|armsr_armv8|bcm27xx_*|rockchip_armv8|sunxi_*|x86_*|siflower_*) ]]; then
+          sed -n '/# Wireless Drivers/,/# end of Wireless Drivers/p' .config | sed -e 's/=m/=n/' >>.config
+          sed -i "s/\(kmod-qca.*\)=m/\1=n/" .config
+          make defconfig
+          fi
+          cat .config
+
+      - name: Cache
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          ccache: 'false'
+          mixkey: ${{ matrix.target }}
+          clean: ${{ contains(github.event.inputs.param, 'nocache') }}
+          prefix: ${{ github.workspace }}/openwrt
+
+      - name: Apply custom files
+        run: |
+          cd openwrt
+          mkdir -p files
+          cp -rf ../devices/common/diy/package/base-files/files/* files/
+
+      - name: Compile the firmware
+        id: compile
+        run: |
+          shopt -s extglob
+          df -hT
+          cd openwrt
+          sed -i '/define prepare_rootfs/a \	find $(1) -name "*-opkg" -delete' include/rootfs.mk
+          echo -e "$(($(nproc)+1)) thread compile"
+          make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
+          #make -j1 V=s
+          rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
+          rm -rf staging_dir/toolchain-*/initial
+          df -hT
+
+      - name: Organize files
+        id: organize
+        continue-on-error: true
+        run: |
+          shopt -s extglob
+          cd openwrt/bin/targets/*/*/
+          cp $GITHUB_WORKSPACE/openwrt/.config ${{matrix.target}}.config || true
+          cp $GITHUB_WORKSPACE/openwrt/build_dir/target-*/linux-*/linux-*/.config ${{matrix.target}}_kernel.config || true
+          Emoji=("🎉" "🤞" "✨" "🎁" "🎈" "🎄" "🎨" "💋" "🍓" "🍕" "🍉" "💐" "🌴" "🚀" "🛸" "🗽" "⛅" "🌈" "🔥" "⛄" "🐶" "🏅" "🦄" "🐤")
+          EMOJI=$(printf "%s\n" "${Emoji[@]}" | shuf -n 1)
+          echo "EMOJI=${EMOJI}" >> $GITHUB_ENV
+          firmware_file=$(find . -name "*-squashfs-combined-efi.img.gz" | head -n1)
+          build_date=$(date +%Y%m%d)
+          release_name="${build_date}-openwrt-x86-64-generic-squashfs-combined-efi.img.gz"
+          cp "$firmware_file" "$release_name"
+          echo "RELEASE_FILE=$(pwd)/$release_name" >> $GITHUB_ENV
+          echo "RELEASE_DIR=$(pwd)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$build_date" >> $GITHUB_ENV
+
+      - name: Prepare ISO generation
+        id: prepare-iso
+        if: env.RELEASE_FILE != ''
+        run: |
+          set -e
+          cd "${{ env.RELEASE_DIR }}"
+          GZ_FILE="$(basename "${{ env.RELEASE_FILE }}")"
+          echo "解压文件: $GZ_FILE"
+          gzip -dkf "$GZ_FILE"
+          IMG_FILE="${GZ_FILE%.gz}"
+          if [ ! -f "$IMG_FILE" ]; then
+            echo "❌ 解压失败: $IMG_FILE"
+            exit 1
+          fi
+          ABS_IMG_PATH=$(realpath "$IMG_FILE")
+          IMG_SIZE=$(stat -c%s "$ABS_IMG_PATH")
+          echo "IMG 路径: $ABS_IMG_PATH"
+          echo "IMG 大小: $(numfmt --to=iec $IMG_SIZE)"
+          echo "IMG_PATH=$ABS_IMG_PATH" >> $GITHUB_OUTPUT
+
+          DATE_PREFIX=$(echo "$GZ_FILE" | grep -oE '^[0-9]{8}')
+          [ -z "$DATE_PREFIX" ] && DATE_PREFIX=$(date +%Y%m%d)
+          ISO_NAME="${DATE_PREFIX}-openwrt-x86-64-generic-squashfs-combined-efi.iso"
+          echo "ISO_NAME=$ISO_NAME" >> $GITHUB_ENV
+          echo "ISO_DATE=$DATE_PREFIX" >> $GITHUB_ENV
+          echo "ISO 文件名: $ISO_NAME"
+
+      - name: Build ISO
+        if: env.RELEASE_FILE != ''
+        uses: AspirantH/openwrt-iso@v2
+        with:
+          INPUT_IMG: "${{ steps.prepare-iso.outputs.IMG_PATH }}"
+          OUTPUT_DIR: "${{ github.workspace }}/output"
+          OUTPUT_ISO_NAME: "${{ env.ISO_NAME }}"
+
+      - name: Verify ISO
+        if: env.RELEASE_FILE != ''
+        run: |
+          echo "output 目录内容："
+          ls -lah "${{ github.workspace }}/output/" || true
+          ISO_PATH="${{ github.workspace }}/output/${{ env.ISO_NAME }}"
+          if [ ! -f "$ISO_PATH" ]; then
+            echo "❌ ISO 未生成: $ISO_PATH"
+            exit 1
+          fi
+          echo "✅ ISO 生成成功: $ISO_PATH"
+          echo "ISO 大小: $(numfmt --to=iec $(stat -c%s "$ISO_PATH"))"
+
+      - name: Create release
+        id: create-release
+        if: env.RELEASE_FILE != ''
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        with:
+          files: |
+            ${{ env.RELEASE_FILE }}
+            ${{ github.workspace }}/output/${{ env.ISO_NAME }}
+          name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}"
+          tag_name: "${{ env.date }}_${{matrix.target}}"
+          body: |
+            OpenWrt firmware compiled from ${{ github.repository }}
+
+            - 固件: `$(basename ${{ env.RELEASE_FILE }})`
+            - ISO: `${{ env.ISO_NAME }}`
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
+      - name: Upload
+        id: upload-webdav
+        if: env.RELEASE_FILE != ''
+        continue-on-error: true
+        env:
+          WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
+          WEBDAV_USER: ${{ secrets.WEBDAV_USER }}
+          WEBDAV_PASS: ${{ secrets.WEBDAV_PASS }}
+          WEBDAV_PATH: ${{ secrets.WEBDAV_PATH }}
+        run: |
+          set -uo pipefail
+          WEBDAV_URL="${WEBDAV_URL%/}"
+          WEBDAV_PATH="${WEBDAV_PATH#/}"
+          WEBDAV_PATH="${WEBDAV_PATH%/}"
+
+          if [ -n "$WEBDAV_PATH" ]; then
+            REMOTE_DIR="${WEBDAV_URL}/${WEBDAV_PATH}"
+          else
+            REMOTE_DIR="${WEBDAV_URL}"
+          fi
+
+          FILENAME="$(basename "$RELEASE_FILE")"
+          ENCODED_FILENAME="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FILENAME")"
+          REMOTE_FILE="${REMOTE_DIR}/${ENCODED_FILENAME}"
+
+          echo "RELEASE_FILE=$RELEASE_FILE"
+          echo "REMOTE_FILE=$REMOTE_FILE"
+          FILE_SIZE=$(stat -c%s "$RELEASE_FILE")
+          echo "固件大小: $FILE_SIZE bytes"
+          echo "==> 开始上传固件 ($((FILE_SIZE/1024/1024)) MB)..."
+
+          set +e
+          curl -fS --progress-bar \
+            -T "$RELEASE_FILE" \
+            -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
+            --connect-timeout 60 \
+            --max-time 3600 \
+            --speed-time 120 --speed-limit 1024 \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            -H "Expect: 100-continue" \
+            "${REMOTE_FILE}"
+          CURL_RC=$?
+          set -e
+
+          if [ $CURL_RC -ne 0 ]; then
+            echo "::error::WebDAV 固件上传失败，curl 退出码=$CURL_RC"
+            exit $CURL_RC
+          fi
+          echo "✅ WebDAV 固件上传完成"
+
+          ISO_PATH="${{ github.workspace }}/output/${{ env.ISO_NAME }}"
+          if [ -f "$ISO_PATH" ]; then
+            ISO_ENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${{ env.ISO_NAME }}")"
+            ISO_REMOTE="${REMOTE_DIR}/${ISO_ENCODED}"
+            ISO_SIZE=$(stat -c%s "$ISO_PATH")
+            echo "==> 开始上传 ISO ($((ISO_SIZE/1024/1024)) MB)..."
+
+            set +e
+            curl -fS --progress-bar \
+              -T "$ISO_PATH" \
+              -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
+              --connect-timeout 60 \
+              --max-time 3600 \
+              --speed-time 120 --speed-limit 1024 \
+              --retry 3 --retry-delay 5 --retry-connrefused \
+              -H "Expect: 100-continue" \
+              "${ISO_REMOTE}"
+            ISO_RC=$?
+            set -e
+
+            if [ $ISO_RC -ne 0 ]; then
+              echo "::warning::WebDAV ISO 上传失败，curl 退出码=$ISO_RC（固件已上传成功）"
+            else
+              echo "✅ WebDAV ISO 上传完成"
+            fi
+          else
+            echo "⚠️ 未找到 ISO 文件，跳过 ISO 上传"
+          fi
+
+      - name: Clean
+        if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        run: |
+          TAG_NAME="${{ env.date }}_${{matrix.target}}"
+          echo "Deleting release ${TAG_NAME} (WebDAV succeeded) ..."
+          gh release delete "${TAG_NAME}" -y --cleanup-tag --repo "${{ github.repository }}"
+
+      - name: WPush NOTICE
+        continue-on-error: true
+        if: env.WPUSH
+        run: |
+          if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
+            if [[ -n "${{ env.RELEASE_FILE }}" ]]; then
+              FILENAME=$(basename "${{ env.RELEASE_FILE }}")
+              FILESIZE=$(du -h "${{ env.RELEASE_FILE }}" | cut -f1)
+              ISO_FILENAME="${{ env.ISO_NAME }}"
+              ISO_FILESIZE="N/A"
+              [ -f "${{ github.workspace }}/output/${{ env.ISO_NAME }}" ] && \
+                ISO_FILESIZE=$(du -h "${{ github.workspace }}/output/${{ env.ISO_NAME }}" | cut -f1)
+            else
+              FILENAME="未生成固件文件"
+              FILESIZE="N/A"
+              ISO_FILENAME="N/A"
+              ISO_FILESIZE="N/A"
+            fi
+
+            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+              UPLOAD_STATUS="WebDAV 上传成功"
+              DOWNLOAD_LINK="${{ secrets.WEBDAV_URL }}${{ secrets.WEBDAV_PATH }}/${FILENAME}"
+              ISO_DOWNLOAD_LINK="${{ secrets.WEBDAV_URL }}${{ secrets.WEBDAV_PATH }}/${ISO_FILENAME}"
+            else
+              UPLOAD_STATUS="WebDAV 上传未完成（已发布至 GitHub Release）"
+              DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.date }}_${{ matrix.target }}"
+              ISO_DOWNLOAD_LINK="${DOWNLOAD_LINK}"
+            fi
+
+            cd openwrt
+            PLUGINS=$(grep -E '^CONFIG_PACKAGE_(luci-app-|luci-theme-|zerotier|aria2|openlist)=' .config \
+                      | grep '=y' | sed 's/CONFIG_PACKAGE_//;s/=y//' | head -n 10)
+            if [[ -n "$PLUGINS" ]]; then
+              PLUGIN_LIST=$(echo "$PLUGINS" | sed 's/^/- /')
+            else
+              PLUGIN_LIST="（未提取到插件列表）"
+            fi
+
+            TITLE="OpenWrt 编译成功"
+            MSG=$(printf '%s\n' \
+              "OpenWrt 固件编译完成" \
+              "" \
+              "设备：${{ matrix.target }}" \
+              "编译日期：${{ env.date2 }}" \
+              "固件文件：${FILENAME} (${FILESIZE})" \
+              "ISO 文件：${ISO_FILENAME} (${ISO_FILESIZE})" \
+              "上传状态：${UPLOAD_STATUS}" \
+              "" \
+              "固件下载：${DOWNLOAD_LINK}" \
+              "ISO 下载：${ISO_DOWNLOAD_LINK}" \
+              "" \
+              "主要插件：" \
+              "${PLUGIN_LIST}")
+          else
+            TITLE="OpenWrt 编译失败"
+            MSG=$(printf '%s\n' \
+              "OpenWrt 编译失败" \
+              "" \
+              "设备：${{ matrix.target }}" \
+              "时间：${{ env.date2 }}" \
+              "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          fi
+
+          curl -X POST 'https://api.wpush.cn/api/v1/send' \
+            -d "apikey=${{ secrets.WPUSH }}" \
+            -d "title=${TITLE}" \
+            -d "content=${MSG}"
+
+      - name: Delete workflow runs
+        uses: GitRML/delete-workflow-runs@main
+        continue-on-error: true
+        with:
+          token: ${{ secrets.TOKEN_OPENWRT }}
+          retain_days: 1
+          keep_minimum_runs: 1
