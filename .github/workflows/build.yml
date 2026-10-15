@@ -156,6 +156,14 @@ jobs:
           VERSION="$(echo "${{github.event.action}}" | grep -Eo " [0-9.]+" | sed -e 's/ //')" || true
           [ "$VERSION" ] && echo "VERSION=$VERSION" >> $GITHUB_ENV || echo "VERSION=$(date +'%m.%d')" >> $GITHUB_ENV
 
+          case "${{ github.event_name }}" in
+            workflow_dispatch)   TRIGGER_SUFFIX="-manual" ;;
+            repository_dispatch) TRIGGER_SUFFIX="-external" ;;
+            *)                   TRIGGER_SUFFIX="" ;;
+          esac
+          echo "TRIGGER_SUFFIX=${TRIGGER_SUFFIX}" >> $GITHUB_ENV
+          echo "Trigger suffix: ${TRIGGER_SUFFIX}"
+
       - name: Clone source code
         run: |
           set -x
@@ -293,7 +301,7 @@ jobs:
           echo "EMOJI=${EMOJI}" >> $GITHUB_ENV
           firmware_file=$(find . -name "*-squashfs-combined-efi.img.gz" | head -n1)
           build_date=$(date +%Y%m%d)
-          release_name="${build_date}-openwrt-x86-64-generic-squashfs-combined-efi.img.gz"
+          release_name="${build_date}-openwrt${TRIGGER_SUFFIX}-x86-64-generic-squashfs-combined-efi.img.gz"
           cp "$firmware_file" "$release_name"
           echo "RELEASE_FILE=$(pwd)/$release_name" >> $GITHUB_ENV
           echo "RELEASE_DIR=$(pwd)" >> $GITHUB_ENV
@@ -321,7 +329,7 @@ jobs:
 
           DATE_PREFIX=$(echo "$GZ_FILE" | grep -oE '^[0-9]{8}')
           [ -z "$DATE_PREFIX" ] && DATE_PREFIX=$(date +%Y%m%d)
-          ISO_NAME="${DATE_PREFIX}-openwrt-x86-64-generic-squashfs-combined-efi.iso"
+          ISO_NAME="${DATE_PREFIX}-openwrt${TRIGGER_SUFFIX}-x86-64-generic-squashfs-combined-efi.iso"
           echo "ISO_NAME=$ISO_NAME" >> $GITHUB_ENV
           echo "ISO_DATE=$DATE_PREFIX" >> $GITHUB_ENV
           echo "ISO 文件名: $ISO_NAME"
