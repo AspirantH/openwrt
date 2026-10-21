@@ -460,12 +460,22 @@ jobs:
           color() {
             if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
           }
+          int_or_zero() {
+            local v="$1"
+            case "$v" in
+              ''|*[!0-9]*) echo 0 ;;
+              *) echo "$v" ;;
+            esac
+          }
 
           TOTAL_BYTES=0; DONE_BYTES=0; HTTP_CODE="?"
           ABORT_REASON=""
 
           now_epoch() { date +%s; }
-          RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "$(now_epoch)")
+          RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "")
+          case "$RUN_START_EPOCH" in
+            ''|*[!0-9]*) RUN_START_EPOCH=$(now_epoch) ;;
+          esac
           elapsed_since_run() { echo $(( $(now_epoch) - RUN_START_EPOCH )); }
 
           wpush_notice() {
@@ -508,7 +518,7 @@ jobs:
               local last_check_t=0
               while [ ! -f "${prog_file}.done" ]; do
                 if [ -s "$prog_file" ]; then
-                  local line pct up_h speed_str remain_str up_bytes now
+                  local line pct_raw pct up_h remain_str up_bytes now
                   line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
 
                   if echo "$line" | grep -qiE 'retry|retrying|retries left'; then
@@ -528,13 +538,15 @@ jobs:
                     sleep 0.3; continue
                   fi
 
-                  pct=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -n1 | tr -d '%')
+                  pct_raw=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -n1 | tr -d '%')
                   up_h=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?[kMG]?' | head -n1)
                   remain_str=$(echo "$line" | grep -oE '[0-9]+:[0-9]{2}:[0-9]{2}' | head -n1)
-                  [ -z "$pct" ] && { sleep 0.3; continue; }
-                  pct=${pct%.*}
+                  [ -z "$pct_raw" ] && { sleep 0.3; continue; }
+                  pct=${pct_raw%.*}
+                  pct=$(int_or_zero "$pct")
 
                   up_bytes=$(echo "$up_h" | numfmt --from=iec 2>/dev/null || echo 0)
+                  up_bytes=$(int_or_zero "$up_bytes")
                   now=$(now_epoch)
                   if [ "$last_t" -gt 0 ] && [ "$now" -gt "$last_t" ]; then
                     local dt=$((now-last_t)) du=$((up_bytes-last_up))
@@ -688,8 +700,8 @@ jobs:
           esac
           WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/}"
           echo "WEBDAV_PUBLIC_URL=${WEBDAV_PUBLIC_URL}" >> $GITHUB_ENV
-          echo "上传地址前缀: ${REMOTE_DIR}"
-          echo "公开下载前缀: ${WEBDAV_PUBLIC_URL}"
+          echo "上传地址前缀: 已设置（长度 ${#REMOTE_DIR}）"
+          echo "公开下载前缀: 已设置（长度 ${#WEBDAV_PUBLIC_URL}）"
 
           FILENAME="$(basename "$RELEASE_FILE")"
           ENCODED_FILENAME="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FILENAME")"
