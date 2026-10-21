@@ -313,7 +313,6 @@ jobs:
 
       - name: Organize files
         id: organize
-        continue-on-error: true
         run: |
           shopt -s extglob
           cd openwrt/bin/targets/*/*/
@@ -323,6 +322,11 @@ jobs:
           EMOJI=$(printf "%s\n" "${Emoji[@]}" | shuf -n 1)
           echo "EMOJI=${EMOJI}" >> $GITHUB_ENV
           firmware_file=$(find . -name "*-squashfs-combined-efi.img.gz" | head -n1)
+          if [ -z "$firmware_file" ]; then
+            echo "::error::未找到固件文件 *-squashfs-combined-efi.img.gz"
+            ls -lah
+            exit 1
+          fi
           build_date=$(date +%Y%m%d)
           release_name="${build_date}-openwrt${TRIGGER_SUFFIX}-x86-64-generic-squashfs-combined-efi.img.gz"
           cp "$firmware_file" "$release_name"
@@ -420,18 +424,42 @@ jobs:
           if [ -t 1 ] && [ "${GITHUB_ACTIONS:-}" != "true" ]; then MODE="live"; else MODE="table"; fi
           echo "上传进度模式: $MODE"
 
-          disp_width() { python3 -c 'import sys,unicodedata
-s=sys.argv[1];print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"; }
-          pad_disp() { local s="$1" t="$2" w p; w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0; printf '%s%*s' "$s" "$p" ""; }
-          trunc_disp() { python3 -c 'import sys,unicodedata
-s=sys.argv[1];n=int(sys.argv[2]);o="";w=0
-for c in s:
-    cw=2 if unicodedata.east_asian_width(c) in "WF" else 1
-    if w+cw>n: break
-    o+=c;w+=cw
-print(o)' "$1" "$2"; }
-          fmt_eta() { local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0; printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60)); }
-          color() { if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi; }
+          disp_width() {
+            local s="$1" w=0 i c
+            for ((i=0; i<${#s}; i++)); do
+              c="${s:i:1}"
+              case "$c" in
+                [!-~]) w=$((w+2)) ;;
+                *)     w=$((w+1)) ;;
+              esac
+            done
+            echo "$w"
+          }
+          pad_disp() {
+            local s="$1" t="$2" w p
+            w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0
+            printf '%s%*s' "$s" "$p" ""
+          }
+          trunc_disp() {
+            local s="$1" n="$2" w=0 o="" i c cw
+            for ((i=0; i<${#s}; i++)); do
+              c="${s:i:1}"
+              case "$c" in
+                [!-~]) cw=2 ;;
+                *)     cw=1 ;;
+              esac
+              [ $((w+cw)) -gt "$n" ] && break
+              o+="$c"; w=$((w+cw))
+            done
+            echo "$o"
+          }
+          fmt_eta() {
+            local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
+            printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60))
+          }
+          color() {
+            if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
+          }
 
           TOTAL_BYTES=0; DONE_BYTES=0; HTTP_CODE="?"
           ABORT_REASON=""
@@ -458,7 +486,10 @@ print(o)' "$1" "$2"; }
               "$(pad_disp 速度 8)" "$(pad_disp 已传 8)" "$(pad_disp 剩余 8)"
             printf '├──────────────────────┼──────────┼────────┼──────────┼──────────┼──────────┤\n'
           }
-          print_footer() { [ "$MODE" = "live" ] && return 0; printf '└──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'; }
+          print_footer() {
+            [ "$MODE" = "live" ] && return 0
+            printf '└──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'
+          }
 
           upload_one() {
             local local_file="$1" remote_url="$2" label="$3"
@@ -650,7 +681,6 @@ print(o)' "$1" "$2"; }
           WEBDAV_PATH="${WEBDAV_PATH#/}"; WEBDAV_PATH="${WEBDAV_PATH%/}"
           if [ -n "$WEBDAV_PATH" ]; then REMOTE_DIR="${WEBDAV_URL}/${WEBDAV_PATH}"; else REMOTE_DIR="${WEBDAV_URL}"; fi
 
-          # 对外下载链接：去掉 URL 末尾的 /dav（上传仍需保留 /dav）
           WEBDAV_PUBLIC_URL="$WEBDAV_URL"
           case "$WEBDAV_PUBLIC_URL" in
             */dav) WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/dav}" ;;
