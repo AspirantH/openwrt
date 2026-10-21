@@ -1,0 +1,811 @@
+#=================================================
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+# Lisence: MIT
+# Author: P3TERX
+# Blog: https://p3terx.com
+#=================================================
+
+name: build & transfer
+
+on:
+#  schedule:
+#    - cron: '0 */8 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [packages-updated]
+
+env:
+  REPO_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+  WECHAT_NOTICE: ${{ secrets.WECHAT_NOTICE }}
+  WPUSH: ${{ secrets.WPUSH }}
+  TZ: Asia/Shanghai
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: Check upstream updates
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      changed_packages: ${{ steps.check.outputs.changed_packages }}
+    steps:
+      - name: Check openwrt-packages commits
+        id: check
+        run: |
+          COMMITS_JSON=$(curl -s -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
+            "https://api.github.com/repos/AspirantH/openwrt-packages/commits?per_page=2")
+
+          latest_sha=$(echo "$COMMITS_JSON" | jq -r '.[0].sha // empty')
+          prev_sha=$(echo "$COMMITS_JSON"   | jq -r '.[1].sha // empty')
+
+          if [ -z "$latest_sha" ] || [ "$latest_sha" == "null" ]; then
+            echo "Failed to fetch latest SHA, forcing build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "changed_packages=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "latest_sha=$latest_sha"
+          echo "prev_sha=$prev_sha"
+
+          CHANGED_PACKAGES=""
+          if [ "${{ github.event_name }}" == "repository_dispatch" ] && [ -n "$prev_sha" ]; then
+            COMPARE_JSON=$(curl -s -H "Authorization: token ${{ secrets.TOKEN_OPENWRT }}" \
+              "https://api.github.com/repos/AspirantH/openwrt-packages/compare/${prev_sha}...${latest_sha}")
+
+            CHANGED_PACKAGES=$(echo "$COMPARE_JSON" | \
+              jq -r '.files[]?.filename // empty' | \
+              grep -oE '(^|/)(packages|feeds)/[^/]+' | \
+              sed -E 's#^.*/(packages|feeds)/##' | \
+              sort -u | \
+              head -20)
+
+            if [ -z "$CHANGED_PACKAGES" ]; then
+              CHANGED_PACKAGES="（未能从提交路径提取到包名）"
+            fi
+
+            PKG_LIST=$(echo "$CHANGED_PACKAGES" | sed 's/^/- /')
+            COMMIT_URL="https://github.com/AspirantH/openwrt-packages/compare/${prev_sha}...${latest_sha}"
+
+            CONTENT=$(printf '%s\n' \
+              "上游软件仓库有新的提交，已触发 OpenWrt 编译。" \
+              "" \
+              "仓库：AspirantH/openwrt-packages" \
+              "范围：${prev_sha:0:8} → ${latest_sha:0:8}" \
+              "" \
+              "变更的软件包：" \
+              "${PKG_LIST}" \
+              "" \
+              "提交对比：${COMMIT_URL}" \
+              "" \
+              "本次编译日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+
+            curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
+              --data-urlencode "apikey=${{ secrets.WPUSH }}" \
+              --data-urlencode "title=上游软件包更新，触发 OpenWrt 编译" \
+              --data-urlencode "content=${CONTENT}" \
+              -o /dev/null -w "WPush HTTP %{http_code}\n" || true
+          fi
+
+          if [ -n "$CHANGED_PACKAGES" ]; then
+            PKGS_ONE_LINE=$(printf '%s' "$CHANGED_PACKAGES" | tr '\n' ',' | sed 's/,$//')
+            echo "changed_packages=${PKGS_ONE_LINE}" >> $GITHUB_OUTPUT
+          else
+            echo "changed_packages=" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] || [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "Manual/external trigger: forcing build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$latest_sha" == "$prev_sha" ]; then
+            echo "No new commit, skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "New commit detected: $latest_sha (prev: $prev_sha)"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    name: Build ${{matrix.target}}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ["${{ github.event.client_payload.target || 'x86_64' }}"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Load Settings.ini
+        run: |
+          echo ${{matrix.target}}
+          source "${{ github.workspace }}/devices/common/settings.ini"
+          if [ -f "devices/${{matrix.target}}/settings.ini" ]; then
+            source "${{ github.workspace }}/devices/${{matrix.target}}/settings.ini"
+          fi
+          echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
+          echo "REPO_BRANCH=${REPO_BRANCH}" >> $GITHUB_ENV
+          echo "CONFIG_FILE=${CONFIG_FILE}" >> $GITHUB_ENV
+          echo "DIY_SH=${DIY_SH}" >> $GITHUB_ENV
+          echo "FREE_UP_DISK=${FREE_UP_DISK}" >> $GITHUB_ENV
+          echo "UPLOAD_BIN_DIR_FOR_ARTIFACT=${UPLOAD_BIN_DIR_FOR_ARTIFACT}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_FOR_ARTIFACT=${UPLOAD_FIRMWARE_FOR_ARTIFACT}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_FOR_RELEASE=${UPLOAD_FIRMWARE_FOR_RELEASE}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_TO_COWTRANSFER=${UPLOAD_FIRMWARE_TO_COWTRANSFER}" >> $GITHUB_ENV
+          echo "UPLOAD_FIRMWARE_TO_WETRANSFER=${UPLOAD_FIRMWARE_TO_WETRANSFER}" >> $GITHUB_ENV
+          sed -i "1a REPO_TOKEN=${{ secrets.TOKEN_OPENWRT }}" ${{ github.workspace }}/devices/common/diy.sh
+          sed -i "1a TARGET=${{matrix.target}}" ${{ github.workspace }}/devices/common/diy.sh
+
+      - name: Free disk space
+        uses: coder-xiaomo/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install build-essential clang flex bison g++ gawk \
+          gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+          python3-setuptools rsync swig unzip zlib1g-dev file wget dwarves \
+          llvm python3-pyelftools libpython3-dev aria2 jq qemu-utils ccache rename \
+          libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
+          xorriso mtools dosfstools
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "Asia/Shanghai"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Get current date
+        id: date
+        run: |
+          echo "date=$(date +'%m/%d_%Y_%H/%M')" >> $GITHUB_ENV
+          echo "date2=$(date +'%m/%d %Y')" >> $GITHUB_ENV
+          VERSION="$(echo "${{github.event.action}}" | grep -Eo " [0-9.]+" | sed -e 's/ //')" || true
+          [ "$VERSION" ] && echo "VERSION=$VERSION" >> $GITHUB_ENV || echo "VERSION=$(date +'%m.%d')" >> $GITHUB_ENV
+
+          case "${{ github.event_name }}" in
+            workflow_dispatch)   TRIGGER_SUFFIX="-manual" ;;
+            repository_dispatch) TRIGGER_SUFFIX="-external" ;;
+            *)                   TRIGGER_SUFFIX="" ;;
+          esac
+          echo "TRIGGER_SUFFIX=${TRIGGER_SUFFIX}" >> $GITHUB_ENV
+          echo "Trigger suffix: ${TRIGGER_SUFFIX}"
+
+      - name: Clone source code
+        run: |
+          set -x
+          TAG_INFO="$(curl -gs -H 'Content-Type: application/json' \
+             -H "Authorization: Bearer ${{ secrets.TOKEN_OPENWRT }}" \
+             -X POST -d '{ "query": "query {repository(owner: \"openwrt\", name: \"openwrt\") {refs(refPrefix: \"refs/tags/\", first: 4, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {nodes {name target { ... on Tag {tagger {date}}}}}}}"}' https://api.github.com/graphql)"
+          TAG_DATE="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[] | select(.name | startswith("v25")) | .target.tagger.date' | head -n 1)"
+          if [[ $(( ($(date +%s) - $(date -d "$TAG_DATE" +%s)) / 86400 )) -lt 10 || "${{ contains(github.event.action, 'tags') }}" == "true" ]]; then
+          REPO_BRANCH="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[].name' | grep v25 | head -n 1)"
+          #REPO_BRANCH="openwrt-25.12"
+          else
+          REPO_BRANCH="openwrt-25.12"
+          fi
+
+          if [[ ! "${{ env.REPO_BRANCH }}" && "$REPO_URL" == "https://github.com/openwrt/openwrt" ]]; then
+              git clone $REPO_URL -b $REPO_BRANCH openwrt
+          elif [[ ! "${{ env.REPO_BRANCH }}" ]]; then
+              git clone $REPO_URL openwrt
+          else
+              REPO_BRANCH="${{env.REPO_BRANCH}}"
+              if [[ ${#REPO_BRANCH} -lt 10 ]]; then
+                  git clone $REPO_URL -b ${REPO_BRANCH} openwrt
+              else
+                  git clone $REPO_URL openwrt
+                  cd openwrt
+                  git checkout ${REPO_BRANCH}
+              fi
+          fi
+
+      - name: Load custom configuration
+        run: |
+          function git_clone_path() {
+            trap 'rm -rf "$tmpdir"' EXIT
+            branch="$1" rurl="$2" mv="$3"
+            [[ "$mv" != "mv" ]] && shift 2 || shift 3
+            rootdir="$PWD"
+            tmpdir="$(mktemp -d)" || exit 1
+            if [ ${#branch} -lt 10 ]; then
+            git clone -b "$branch" --depth 1 --filter=blob:none --sparse "$rurl" "$tmpdir"
+            cd "$tmpdir"
+            else
+            git clone --filter=blob:none --sparse "$rurl" "$tmpdir"
+            cd "$tmpdir"
+            git checkout $branch
+            fi
+            if [ "$?" != 0 ]; then
+              echo "error on $rurl"
+              exit 1
+            fi
+            git sparse-checkout init --cone
+            git sparse-checkout set $@
+            [[ "$mv" != "mv" ]] && cp -rn ./* $rootdir/ || mv -n $@/* $rootdir/$@/
+            cd $rootdir
+            }
+          export -f git_clone_path
+          mkdir -p openwrt
+          cp -rf devices/common/. openwrt/
+          cp -rf devices/${{matrix.target}}/. openwrt/
+          cp -rf devices openwrt/
+          cd openwrt
+          chmod +x devices/common/$DIY_SH
+          export DB_PASS="${{ secrets.DB_PASSWORD }}"
+          /bin/bash "devices/common/$DIY_SH"
+          cp -f devices/common/$CONFIG_FILE .config
+          if [ -f "devices/${{matrix.target}}/$CONFIG_FILE" ]; then
+            echo >> .config
+            cat devices/${{matrix.target}}/$CONFIG_FILE >> .config
+          fi
+          if [ -f "devices/${{matrix.target}}/$DIY_SH" ]; then
+            chmod +x devices/${{matrix.target}}/$DIY_SH
+            echo "/bin/bash devices/${{matrix.target}}/$DIY_SH"
+            /bin/bash "devices/${{matrix.target}}/$DIY_SH"
+          fi
+          cp -Rf ./diy/* ./ || true
+
+      - name: Apply patches
+        run: |
+          cd openwrt
+          cp -rn devices/common/patches devices/${{matrix.target}}/
+          if [ -n "$(ls -A devices/${{matrix.target}}/*.bin.patch 2>/dev/null)" ]; then
+            git apply devices/${{matrix.target}}/patches/*.bin.patch
+          fi
+          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.revert.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' -R --no-backup-if-mismatch -p1 -F 1 -i '%'"
+          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.patch' ! -name '*.revert.patch' ! -name '*.bin.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
+
+      - name: Defconfig
+        run: |
+          cd openwrt
+          make defconfig
+          if [[ ! "${{matrix.target}}" =~ (amlogic_meson8b|armsr_armv8|bcm27xx_*|rockchip_armv8|sunxi_*|x86_*|siflower_*) ]]; then
+          sed -n '/# Wireless Drivers/,/# end of Wireless Drivers/p' .config | sed -e 's/=m/=n/' >>.config
+          sed -i "s/\(kmod-qca.*\)=m/\1=n/" .config
+          make defconfig
+          fi
+          cat .config
+
+      - name: Cache
+        uses: stupidloud/cachewrtbuild@main
+        with:
+          ccache: 'false'
+          mixkey: ${{ matrix.target }}
+          clean: ${{ contains(github.event.inputs.param, 'nocache') }}
+          prefix: ${{ github.workspace }}/openwrt
+
+      - name: Apply custom files
+        run: |
+          cd openwrt
+          mkdir -p files
+          cp -rf ../devices/common/diy/package/base-files/files/* files/
+
+      - name: Compile the firmware
+        id: compile
+        run: |
+          shopt -s extglob
+          df -hT
+          cd openwrt
+          sed -i '/define prepare_rootfs/a \	find $(1) -name "*-opkg" -delete' include/rootfs.mk
+          echo -e "$(($(nproc)+1)) thread compile"
+          make -j$(($(nproc)+1)) || { log=$(mktemp); make V=s &>$log; cat $log; exit 1; }
+          #make -j1 V=s
+          rm -rf staging_dir/toolchain-*/bin/*openwrt-linux-musl-lto-dump
+          rm -rf staging_dir/toolchain-*/initial
+          df -hT
+
+      - name: Organize files
+        id: organize
+        continue-on-error: true
+        run: |
+          shopt -s extglob
+          cd openwrt/bin/targets/*/*/
+          cp $GITHUB_WORKSPACE/openwrt/.config ${{matrix.target}}.config || true
+          cp $GITHUB_WORKSPACE/openwrt/build_dir/target-*/linux-*/linux-*/.config ${{matrix.target}}_kernel.config || true
+          Emoji=("🎉" "🤞" "✨" "🎁" "🎈" "🎄" "🎨" "💋" "🍓" "🍕" "🍉" "💐" "🌴" "🚀" "🛸" "🗽" "⛅" "🌈" "🔥" "⛄" "🐶" "🏅" "🦄" "🐤")
+          EMOJI=$(printf "%s\n" "${Emoji[@]}" | shuf -n 1)
+          echo "EMOJI=${EMOJI}" >> $GITHUB_ENV
+          firmware_file=$(find . -name "*-squashfs-combined-efi.img.gz" | head -n1)
+          build_date=$(date +%Y%m%d)
+          release_name="${build_date}-openwrt${TRIGGER_SUFFIX}-x86-64-generic-squashfs-combined-efi.img.gz"
+          cp "$firmware_file" "$release_name"
+          echo "RELEASE_FILE=$(pwd)/$release_name" >> $GITHUB_ENV
+          echo "RELEASE_DIR=$(pwd)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$build_date" >> $GITHUB_ENV
+
+      - name: Prepare ISO generation
+        id: prepare-iso
+        if: env.RELEASE_FILE != ''
+        run: |
+          set -e
+          cd "${{ env.RELEASE_DIR }}"
+          GZ_FILE="$(basename "${{ env.RELEASE_FILE }}")"
+          echo "解压文件: $GZ_FILE"
+          gzip -dkf "$GZ_FILE"
+          IMG_FILE="${GZ_FILE%.gz}"
+          if [ ! -f "$IMG_FILE" ]; then
+            echo "❌ 解压失败: $IMG_FILE"
+            exit 1
+          fi
+          ABS_IMG_PATH=$(realpath "$IMG_FILE")
+          IMG_SIZE=$(stat -c%s "$ABS_IMG_PATH")
+          echo "IMG 路径: $ABS_IMG_PATH"
+          echo "IMG 大小: $(numfmt --to=iec $IMG_SIZE)"
+          echo "IMG_PATH=$ABS_IMG_PATH" >> $GITHUB_OUTPUT
+
+          DATE_PREFIX=$(echo "$GZ_FILE" | grep -oE '^[0-9]{8}')
+          [ -z "$DATE_PREFIX" ] && DATE_PREFIX=$(date +%Y%m%d)
+          ISO_NAME="${DATE_PREFIX}-openwrt${TRIGGER_SUFFIX}-x86-64-generic-squashfs-combined-efi.iso"
+          echo "ISO_NAME=$ISO_NAME" >> $GITHUB_ENV
+          echo "ISO_DATE=$DATE_PREFIX" >> $GITHUB_ENV
+          echo "ISO 文件名: $ISO_NAME"
+
+      - name: Build ISO
+        if: env.RELEASE_FILE != ''
+        continue-on-error: true
+        uses: AspirantH/openwrt-iso@v2
+        with:
+          INPUT_IMG: "${{ steps.prepare-iso.outputs.IMG_PATH }}"
+          OUTPUT_DIR: "${{ github.workspace }}/output"
+          OUTPUT_ISO_NAME: "${{ env.ISO_NAME }}"
+
+      - name: Verify ISO
+        if: env.RELEASE_FILE != ''
+        run: |
+          echo "output 目录内容："
+          ls -lah "${{ github.workspace }}/output/" || true
+          ISO_PATH="${{ github.workspace }}/output/${{ env.ISO_NAME }}"
+          if [ ! -f "$ISO_PATH" ]; then
+            echo "::warning::ISO 未生成: $ISO_PATH（将仅发布固件）"
+          else
+            echo "✅ ISO 生成成功: $ISO_PATH"
+            echo "ISO 大小: $(numfmt --to=iec $(stat -c%s "$ISO_PATH"))"
+          fi
+
+      - name: Create release
+        id: create-release
+        if: env.RELEASE_FILE != ''
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        with:
+          files: |
+            ${{ env.RELEASE_FILE }}
+            ${{ github.workspace }}/output/${{ env.ISO_NAME }}
+          name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}"
+          tag_name: "${{ env.date }}_${{matrix.target}}"
+          body: |
+            OpenWrt firmware compiled from ${{ github.repository }}
+
+            - 固件: `$(basename ${{ env.RELEASE_FILE }})`
+            - ISO: `${{ env.ISO_NAME }}`
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
+      - name: Upload
+        id: upload-webdav
+        if: env.RELEASE_FILE != ''
+        continue-on-error: true
+        env:
+          WEBDAV_URL: ${{ secrets.WEBDAV_URL }}
+          WEBDAV_USER: ${{ secrets.WEBDAV_USER }}
+          WEBDAV_PASS: ${{ secrets.WEBDAV_PASS }}
+          WEBDAV_PATH: ${{ secrets.WEBDAV_PATH }}
+          WPUSH: ${{ secrets.WPUSH }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
+          JOB_BUDGET_SEC: "21300"
+          MIN_SPEED_KBPS: "100"
+          CHECK_EVERY_SEC: "30"
+        run: |
+          set -uo pipefail
+
+          if [ -t 1 ] && [ "${GITHUB_ACTIONS:-}" != "true" ]; then MODE="live"; else MODE="table"; fi
+          echo "上传进度模式: $MODE"
+
+          disp_width() { python3 -c 'import sys,unicodedata
+s=sys.argv[1];print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"; }
+          pad_disp() { local s="$1" t="$2" w p; w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0; printf '%s%*s' "$s" "$p" ""; }
+          trunc_disp() { python3 -c 'import sys,unicodedata
+s=sys.argv[1];n=int(sys.argv[2]);o="";w=0
+for c in s:
+    cw=2 if unicodedata.east_asian_width(c) in "WF" else 1
+    if w+cw>n: break
+    o+=c;w+=cw
+print(o)' "$1" "$2"; }
+          fmt_eta() { local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0; printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60)); }
+          color() { if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi; }
+
+          TOTAL_BYTES=0; DONE_BYTES=0; HTTP_CODE="?"
+          ABORT_REASON=""
+
+          now_epoch() { date +%s; }
+          RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "$(now_epoch)")
+          elapsed_since_run() { echo $(( $(now_epoch) - RUN_START_EPOCH )); }
+
+          wpush_notice() {
+            local title="$1" content="$2"
+            [ -z "${WPUSH:-}" ] && { echo "⚠️ 未配置 WPUSH，跳过通知"; return 0; }
+            curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
+              --data-urlencode "apikey=${WPUSH}" \
+              --data-urlencode "title=${title}" \
+              --data-urlencode "content=${content}" \
+              -o /dev/null -w "WPush HTTP %{http_code}\n" || true
+          }
+
+          print_header() {
+            [ "$MODE" = "live" ] && return 0
+            printf '┌──────────────────────┬──────────┬────────┬──────────┬──────────┬──────────┐\n'
+            printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+              "$(pad_disp 文件 20)" "$(pad_disp 大小 8)" "$(pad_disp 进度 6)" \
+              "$(pad_disp 速度 8)" "$(pad_disp 已传 8)" "$(pad_disp 剩余 8)"
+            printf '├──────────────────────┼──────────┼────────┼──────────┼──────────┼──────────┤\n'
+          }
+          print_footer() { [ "$MODE" = "live" ] && return 0; printf '└──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'; }
+
+          upload_one() {
+            local local_file="$1" remote_url="$2" label="$3"
+            local fname fsize fsize_h
+            fname="$(basename "$local_file")"
+            fsize=$(stat -c%s "$local_file")
+            fsize_h=$(numfmt --to=iec "$fsize" | tr -d ' ')
+            TOTAL_BYTES=$((TOTAL_BYTES + fsize))
+
+            local prog_file
+            prog_file="$(mktemp)"
+
+            (
+              local last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
+              local retry_count=0 last_retry_line=""
+              local last_check_t=0
+              while [ ! -f "${prog_file}.done" ]; do
+                if [ -s "$prog_file" ]; then
+                  local line pct up_h speed_str remain_str up_bytes now
+                  line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
+
+                  if echo "$line" | grep -qiE 'retry|retrying|retries left'; then
+                    if [ "$line" != "$last_retry_line" ]; then
+                      last_retry_line="$line"; retry_count=$((retry_count+1))
+                      local secs_left; secs_left=$(echo "$line" | grep -oE '[0-9]+ seconds?' | head -n1 | grep -oE '[0-9]+')
+                      local tip=""; [ -n "${secs_left:-}" ] && tip="（${secs_left}s 后重试）"
+                      if [ "$MODE" = "live" ]; then
+                        printf '\r\033[K%s %s 第 %d 次重试%s\n' "$(color 33 "🔄")" "$label" "$retry_count" "$tip"
+                      else
+                        printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+                          "$(pad_disp "🔄 重试" 20)" "$(pad_disp "-" 8)" \
+                          "$(pad_disp "第${retry_count}次" 6)" "$(pad_disp "-" 8)" \
+                          "$(pad_disp "-" 8)" "$(pad_disp "${secs_left:-?}s 后" 8)"
+                      fi
+                    fi
+                    sleep 0.3; continue
+                  fi
+
+                  pct=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -n1 | tr -d '%')
+                  up_h=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?[kMG]?' | head -n1)
+                  remain_str=$(echo "$line" | grep -oE '[0-9]+:[0-9]{2}:[0-9]{2}' | head -n1)
+                  [ -z "$pct" ] && { sleep 0.3; continue; }
+                  pct=${pct%.*}
+
+                  up_bytes=$(echo "$up_h" | numfmt --from=iec 2>/dev/null || echo 0)
+                  now=$(now_epoch)
+                  if [ "$last_t" -gt 0 ] && [ "$now" -gt "$last_t" ]; then
+                    local dt=$((now-last_t)) du=$((up_bytes-last_up))
+                    [ "$dt" -gt 0 ] && [ "$du" -ge 0 ] && speed_avg=$(( (speed_avg*samples + du/dt) / (samples+1) ))
+                    samples=$((samples+1))
+                  fi
+                  last_up=$up_bytes; last_t=$now
+
+                  local speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(numfmt --to=iec $speed_avg)/s"
+                  local eta_fmt="-"
+                  if [ "$speed_avg" -gt 0 ] && [ "$up_bytes" -gt 0 ] && [ "$up_bytes" -lt "$fsize" ]; then
+                    eta_fmt=$(fmt_eta $(( (fsize-up_bytes)/speed_avg )))
+                  fi
+                  [ -n "$remain_str" ] && [ "$MODE" = "live" ] && eta_fmt="$remain_str"
+
+                  local do_check=0
+                  for th in 5 10 20 40 60 80; do
+                    [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && do_check=1
+                  done
+                  [ $((now-last_check_t)) -ge "$CHECK_EVERY_SEC" ] && do_check=1
+                  if [ "$do_check" -eq 1 ] && [ "$speed_avg" -gt 0 ]; then
+                    last_check_t=$now
+                    local speed_kbps=$(( speed_avg / 1024 ))
+                    local remain_bytes=$(( fsize - up_bytes ))
+                    local eta_sec=$(( remain_bytes / speed_avg ))
+                    local elapsed_run=$(elapsed_since_run)
+                    local projected_total=$(( elapsed_run + eta_sec ))
+                    local budget=$JOB_BUDGET_SEC
+
+                    if [ "$speed_kbps" -lt "$MIN_SPEED_KBPS" ]; then
+                      ABORT_REASON="平均速率过低 ${speed_kbps} kB/s < ${MIN_SPEED_KBPS} kB/s"
+                    elif [ "$projected_total" -gt "$budget" ]; then
+                      ABORT_REASON="预计总耗时 $((projected_total/60)) 分钟 > 6 小时预算，已运行 $((elapsed_run/60)) 分钟，剩余预计 $((eta_sec/60)) 分钟"
+                    fi
+
+                    if [ -n "$ABORT_REASON" ]; then
+                      local up_total_h
+                      up_total_h=$(numfmt --to=iec "$up_bytes" 2>/dev/null || echo "$up_bytes")
+                      local content
+                      content=$(printf '%s\n' \
+                        "WebDAV 上传已中止：${ABORT_REASON}" \
+                        "" \
+                        "文件：${fname}" \
+                        "大小：${fsize_h}" \
+                        "已传：${up_total_h} (${pct}%)" \
+                        "平均速率：$(( speed_avg / 1024 )) kB/s" \
+                        "已运行：$(( elapsed_run/60 )) 分钟" \
+                        "预计剩余：$(( eta_sec/60 )) 分钟" \
+                        "预算：6 小时（含安全余量）" \
+                        "" \
+                        "日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+                      if [ "$MODE" = "live" ]; then
+                        printf '\r\033[K%s %s 中止：%s\n' "$(color 31 "⛔")" "$label" "$ABORT_REASON"
+                      else
+                        printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+                          "$(pad_disp "⛔ 中止" 20)" "$(pad_disp "$fsize_h" 8)" \
+                          "$(pad_disp "${pct}%" 6)" "$(pad_disp "${speed_kbps}k/s" 8)" \
+                          "$(pad_disp "$up_total_h" 8)" "$(pad_disp "超时/过慢" 8)"
+                      fi
+                      echo "::error::WebDAV 上传中止：${ABORT_REASON}"
+                      wpush_notice "WebDAV 上传中止：速率过慢/超时" "$content"
+                      if [ -n "${CURL_PID:-}" ]; then
+                        kill -TERM "$CURL_PID" 2>/dev/null || true
+                        sleep 2
+                        kill -KILL "$CURL_PID" 2>/dev/null || true
+                      fi
+                      return 66
+                    fi
+                  fi
+
+                  if [ "$MODE" = "live" ]; then
+                    local bar; bar=$(awk -v p="$pct" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
+                    printf '\r\033[K%s %s [%s] %3d%%  %s  ETA %s  %s' \
+                      "$(color 36 "上传")" "$(color 33 "$label")" "$(color 32 "$bar")" \
+                      "$pct" "$speed_fmt" "$eta_fmt" "$(trunc_disp "$fname" 24)"
+                  else
+                    local should=0 th
+                    for th in 0 25 50 75 100; do
+                      [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && should=1
+                    done
+                    if [ "$should" -eq 1 ] || [ "$pct" -ge 100 ]; then
+                      last_pct=$pct
+                      printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+                        "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                        "$(pad_disp "${pct}%" 6)" "$(pad_disp "$speed_fmt" 8)" \
+                        "$(pad_disp "${up_h:-0}" 8)" "$(pad_disp "$eta_fmt" 8)"
+                    fi
+                  fi
+                fi
+                sleep 0.3
+              done
+              [ "$MODE" = "live" ] && printf '\n'
+            ) &
+            local rpid=$!
+
+            set +e
+            curl --progress-bar \
+              -T "$local_file" \
+              -u "${WEBDAV_USER}:${WEBDAV_PASS}" \
+              --connect-timeout 60 \
+              --max-time 3600 \
+              --speed-time 120 --speed-limit 1024 \
+              --retry 3 --retry-delay 5 --retry-connrefused \
+              -H "Expect: 100-continue" \
+              -w '%{http_code}\n' -o /dev/null \
+              "$remote_url" > "${prog_file}" 2>&1 &
+            CURL_PID=$!
+            wait "$CURL_PID"; local rc=$?
+            set -e
+
+            touch "${prog_file}.done"
+            wait "$rpid" 2>/dev/null || true
+            HTTP_CODE=$(tail -n 8 "${prog_file}" | grep -E '^[0-9]{3}$' | tail -n1); [ -z "$HTTP_CODE" ] && HTTP_CODE="?"
+            rm -f "$prog_file" "${prog_file}.done"
+
+            if [ -n "$ABORT_REASON" ]; then
+              ABORT_REASON=""
+              return 66
+            fi
+
+            if [ $rc -ne 0 ]; then
+              if [ "$MODE" = "live" ]; then
+                printf '%s %s 失败 curl=%s HTTP=%s\n' "$(color 31 "❌")" "$label" "$rc" "$HTTP_CODE"
+              else
+                printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+                  "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                  "$(pad_disp "❌" 6)" "$(pad_disp "-" 8)" "$(pad_disp "-" 8)" "$(pad_disp "HTTP ${HTTP_CODE}" 8)"
+              fi
+              return $rc
+            fi
+
+            DONE_BYTES=$((DONE_BYTES + fsize))
+            if [ "$MODE" = "live" ]; then
+              printf '%s %s 完成 %s (%s) HTTP=%s\n' "$(color 32 "✅")" "$label" "$fsize_h" "$fname" "$HTTP_CODE"
+            else
+              printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
+                "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                "$(pad_disp "100%" 6)" "$(pad_disp "-" 8)" "$(pad_disp "$fsize_h" 8)" "$(pad_disp "✅ 完成" 8)"
+            fi
+            return 0
+          }
+
+          WEBDAV_URL="${WEBDAV_URL%/}"
+          WEBDAV_PATH="${WEBDAV_PATH#/}"; WEBDAV_PATH="${WEBDAV_PATH%/}"
+          if [ -n "$WEBDAV_PATH" ]; then REMOTE_DIR="${WEBDAV_URL}/${WEBDAV_PATH}"; else REMOTE_DIR="${WEBDAV_URL}"; fi
+
+          # 对外下载链接：去掉 URL 末尾的 /dav（上传仍需保留 /dav）
+          WEBDAV_PUBLIC_URL="$WEBDAV_URL"
+          case "$WEBDAV_PUBLIC_URL" in
+            */dav) WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/dav}" ;;
+            */dav/) WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/dav/}" ;;
+          esac
+          WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/}"
+          echo "WEBDAV_PUBLIC_URL=${WEBDAV_PUBLIC_URL}" >> $GITHUB_ENV
+          echo "上传地址前缀: ${REMOTE_DIR}"
+          echo "公开下载前缀: ${WEBDAV_PUBLIC_URL}"
+
+          FILENAME="$(basename "$RELEASE_FILE")"
+          ENCODED_FILENAME="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FILENAME")"
+          REMOTE_FILE="${REMOTE_DIR}/${ENCODED_FILENAME}"
+          ISO_PATH="${{ github.workspace }}/output/${{ env.ISO_NAME }}"
+          ISO_ENCODED="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${{ env.ISO_NAME }}")"
+          ISO_REMOTE="${REMOTE_DIR}/${ISO_ENCODED}"
+
+          echo "Workflow 已运行: $(elapsed_since_run) 秒"
+          print_header
+          set +e
+          upload_one "$RELEASE_FILE" "$REMOTE_FILE" "固件"
+          CURL_RC=$?
+          set -e
+          if [ $CURL_RC -ne 0 ]; then
+            print_footer
+            if [ $CURL_RC -eq 66 ]; then
+              echo "::error::WebDAV 固件上传因速率过慢/超时被中止"
+            else
+              echo "::error::WebDAV 固件上传失败，curl=$CURL_RC HTTP=$HTTP_CODE"
+            fi
+            exit $CURL_RC
+          fi
+
+          if [ -f "$ISO_PATH" ]; then
+            set +e
+            upload_one "$ISO_PATH" "$ISO_REMOTE" "ISO"
+            ISO_RC=$?
+            set -e
+            if [ $ISO_RC -ne 0 ]; then
+              print_footer
+              if [ $ISO_RC -eq 66 ]; then
+                echo "::warning::WebDAV ISO 上传因速率过慢/超时被中止（固件已上传成功）"
+              else
+                echo "::warning::WebDAV ISO 上传失败，curl=$ISO_RC HTTP=$HTTP_CODE（固件已上传成功）"
+              fi
+            else
+              if [ "$MODE" = "table" ]; then
+                printf '├──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
+                local total_h done_h pct_total bar
+                total_h=$(numfmt --to=iec $TOTAL_BYTES); done_h=$(numfmt --to=iec $DONE_BYTES)
+                pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
+                bar=$(awk -v p="$pct_total" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
+                printf '│ 总进度 [%s] %3d%%  %s / %s\n' "$bar" "$pct_total" "$done_h" "$total_h"
+              fi
+              print_footer
+            fi
+          else
+            echo "⚠️ 未找到 ISO 文件，跳过 ISO 上传"
+            print_footer
+          fi
+          echo "✅ WebDAV 上传流程结束"
+
+      - name: Clean
+        if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
+        run: |
+          TAG_NAME="${{ env.date }}_${{matrix.target}}"
+          echo "Deleting release ${TAG_NAME} (WebDAV succeeded) ..."
+          gh release delete "${TAG_NAME}" -y --cleanup-tag --repo "${{ github.repository }}"
+
+      - name: WPush NOTICE
+        continue-on-error: true
+        if: env.WPUSH
+        env:
+          CHANGED_PACKAGES: ${{ needs.check.outputs.changed_packages }}
+        run: |
+          if [[ "${{ steps.compile.outcome }}" == "success" ]]; then
+            if [[ -n "${{ env.RELEASE_FILE }}" ]]; then
+              FILENAME=$(basename "${{ env.RELEASE_FILE }}")
+              FILESIZE=$(du -h "${{ env.RELEASE_FILE }}" | cut -f1)
+              ISO_FILENAME="${{ env.ISO_NAME }}"
+              ISO_FILESIZE="N/A"
+              [ -f "${{ github.workspace }}/output/${{ env.ISO_NAME }}" ] && \
+                ISO_FILESIZE=$(du -h "${{ github.workspace }}/output/${{ env.ISO_NAME }}" | cut -f1)
+            else
+              FILENAME="未生成固件文件"
+              FILESIZE="N/A"
+              ISO_FILENAME="N/A"
+              ISO_FILESIZE="N/A"
+            fi
+
+            if [[ "${{ steps.upload-webdav.outcome }}" == "success" ]]; then
+              UPLOAD_STATUS="WebDAV 上传成功"
+              PUBLIC_PREFIX="${WEBDAV_PUBLIC_URL:-${{ secrets.WEBDAV_URL }}}"
+              DOWNLOAD_LINK="${PUBLIC_PREFIX}${{ secrets.WEBDAV_PATH }}/${FILENAME}"
+              ISO_DOWNLOAD_LINK="${PUBLIC_PREFIX}${{ secrets.WEBDAV_PATH }}/${ISO_FILENAME}"
+            else
+              UPLOAD_STATUS="WebDAV 上传未完成（已发布至 GitHub Release）"
+              DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.date }}_${{ matrix.target }}"
+              ISO_DOWNLOAD_LINK="${DOWNLOAD_LINK}"
+            fi
+
+            cd openwrt
+            PLUGINS=$(grep -E '^CONFIG_PACKAGE_(luci-app-|luci-theme-|zerotier|aria2|openlist)=' .config \
+                      | grep '=y' | sed 's/CONFIG_PACKAGE_//;s/=y//' | head -n 10)
+            if [[ -n "$PLUGINS" ]]; then
+              PLUGIN_LIST=$(echo "$PLUGINS" | sed 's/^/- /')
+            else
+              PLUGIN_LIST="（未提取到插件列表）"
+            fi
+
+            CHANGED_PKGS_LIST="（本次无上游软件包变更）"
+            if [[ -n "${CHANGED_PACKAGES:-}" ]]; then
+              CHANGED_PKGS_LIST=$(echo "$CHANGED_PACKAGES" | tr ',' '\n' | sed 's/^/- /')
+            fi
+
+            TITLE="OpenWrt 编译成功"
+            MSG=$(printf '%s\n' \
+              "OpenWrt 固件编译完成" \
+              "" \
+              "设备：${{ matrix.target }}" \
+              "编译日期：${{ env.date2 }}" \
+              "固件文件：${FILENAME} (${FILESIZE})" \
+              "ISO 文件：${ISO_FILENAME} (${ISO_FILESIZE})" \
+              "上传状态：${UPLOAD_STATUS}" \
+              "" \
+              "固件下载：${DOWNLOAD_LINK}" \
+              "ISO 下载：${ISO_DOWNLOAD_LINK}" \
+              "" \
+              "上游变更的软件包：" \
+              "${CHANGED_PKGS_LIST}" \
+              "" \
+              "主要插件：" \
+              "${PLUGIN_LIST}")
+          else
+            TITLE="OpenWrt 编译失败"
+            MSG=$(printf '%s\n' \
+              "OpenWrt 编译失败" \
+              "" \
+              "设备：${{ matrix.target }}" \
+              "时间：${{ env.date2 }}" \
+              "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          fi
+
+          curl -X POST 'https://api.wpush.cn/api/v1/send' \
+            -d "apikey=${{ secrets.WPUSH }}" \
+            -d "title=${TITLE}" \
+            -d "content=${MSG}"
+
+      - name: Delete workflow runs
+        uses: GitRML/delete-workflow-runs@main
+        continue-on-error: true
+        with:
+          token: ${{ secrets.TOKEN_OPENWRT }}
+          retain_days: 1
+          keep_minimum_runs: 1
