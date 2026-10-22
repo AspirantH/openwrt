@@ -54,34 +54,37 @@ jobs:
 
             CHANGED_PACKAGES=$(echo "$COMPARE_JSON" | \
               jq -r '.files[]?.filename // empty' | \
-              grep -oE '(^|/)(packages|feeds)/[^/]+' | \
-              sed -E 's#^.*/(packages|feeds)/##' | \
+              awk -F'/' 'NF>1 {print $1}' | \
               sort -u | \
               head -20)
 
             if [ -z "$CHANGED_PACKAGES" ]; then
-              CHANGED_PACKAGES="（未能从提交路径提取到包名）"
+              CHANGED_PACKAGES=$(echo "$COMPARE_JSON" | \
+                jq -r '.files[]?.filename // empty' | head -10 | sed 's/^/- /')
+              [ -z "$CHANGED_PACKAGES" ] && CHANGED_PACKAGES="（Compare API 未返回变更文件，可能提交范围过大或权限不足）"
             fi
 
             PKG_LIST=$(echo "$CHANGED_PACKAGES" | sed 's/^/- /')
             COMMIT_URL="https://github.com/AspirantH/openwrt-packages/compare/${prev_sha}...${latest_sha}"
 
             CONTENT=$(printf '%s\n' \
-              "上游软件仓库有新的提交，已触发 OpenWrt 编译。" \
+              "软件仓库有新的提交，已触发 OpenWrt 编译。" \
               "" \
               "仓库：AspirantH/openwrt-packages" \
               "范围：${prev_sha:0:8} → ${latest_sha:0:8}" \
               "" \
-              "变更的软件包：" \
+              "更新的软件包：" \
               "${PKG_LIST}" \
               "" \
-              "提交对比：${COMMIT_URL}" \
+              "代码提交对比：" \
+              "${COMMIT_URL}" \
               "" \
-              "本次编译日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
+              "编译日志：" \
+              "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
 
             curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
               --data-urlencode "apikey=${{ secrets.WPUSH }}" \
-              --data-urlencode "title=上游软件包更新，触发 OpenWrt 编译" \
+              --data-urlencode "title=软件包更新，触发 OpenWrt 编译" \
               --data-urlencode "content=${CONTENT}" \
               -o /dev/null -w "WPush HTTP %{http_code}\n" || true
           fi
@@ -425,15 +428,7 @@ jobs:
           echo "上传进度模式: $MODE"
 
           disp_width() {
-            local s="$1" w=0 i c
-            for ((i=0; i<${#s}; i++)); do
-              c="${s:i:1}"
-              case "$c" in
-                [!-~]) w=$((w+2)) ;;
-                *)     w=$((w+1)) ;;
-              esac
-            done
-            echo "$w"
+            python3 -c 'import sys,unicodedata; s=sys.argv[1]; print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"
           }
           pad_disp() {
             local s="$1" t="$2" w p
@@ -441,17 +436,8 @@ jobs:
             printf '%s%*s' "$s" "$p" ""
           }
           trunc_disp() {
-            local s="$1" n="$2" w=0 o="" i c cw
-            for ((i=0; i<${#s}; i++)); do
-              c="${s:i:1}"
-              case "$c" in
-                [!-~]) cw=2 ;;
-                *)     cw=1 ;;
-              esac
-              [ $((w+cw)) -gt "$n" ] && break
-              o+="$c"; w=$((w+cw))
-            done
-            echo "$o"
+            local s="$1" n="$2"
+            echo "$s" | awk -v n="$n" 'BEGIN{FS=""} {w=0;o="";for(i=1;i<=NF;i++){c=$i;cw=(c ~ /[\x80-\xFF]/)?2:1;if(w+cw>n)break;o=o c;w+=cw}print o}'
           }
           fmt_eta() {
             local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
@@ -490,15 +476,15 @@ jobs:
 
           print_header() {
             [ "$MODE" = "live" ] && return 0
-            printf '┌──────────────────────┬──────────┬────────┬──────────┬──────────┬──────────┐\n'
+            printf '┌────────────────────────────┬──────────┬────────┬──────────┬──────────┬──────────┐\n'
             printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-              "$(pad_disp 文件 20)" "$(pad_disp 大小 8)" "$(pad_disp 进度 6)" \
+              "$(pad_disp 文件 28)" "$(pad_disp 大小 8)" "$(pad_disp 进度 6)" \
               "$(pad_disp 速度 8)" "$(pad_disp 已传 8)" "$(pad_disp 剩余 8)"
-            printf '├──────────────────────┼──────────┼────────┼──────────┼──────────┼──────────┤\n'
+            printf '├────────────────────────────┼──────────┼────────┼──────────┼──────────┼──────────┤\n'
           }
           print_footer() {
             [ "$MODE" = "live" ] && return 0
-            printf '└──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'
+            printf '└────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'
           }
 
           upload_one() {
@@ -530,7 +516,7 @@ jobs:
                         printf '\r\033[K%s %s 第 %d 次重试%s\n' "$(color 33 "🔄")" "$label" "$retry_count" "$tip"
                       else
                         printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                          "$(pad_disp "🔄 重试" 20)" "$(pad_disp "-" 8)" \
+                          "$(pad_disp "🔄 重试" 28)" "$(pad_disp "-" 8)" \
                           "$(pad_disp "第${retry_count}次" 6)" "$(pad_disp "-" 8)" \
                           "$(pad_disp "-" 8)" "$(pad_disp "${secs_left:-?}s 后" 8)"
                       fi
@@ -595,19 +581,19 @@ jobs:
                         "平均速率：$(( speed_avg / 1024 )) kB/s" \
                         "已运行：$(( elapsed_run/60 )) 分钟" \
                         "预计剩余：$(( eta_sec/60 )) 分钟" \
-                        "预算：6 小时（含安全余量）" \
+                        "预算：6 小时" \
                         "" \
                         "日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
                       if [ "$MODE" = "live" ]; then
                         printf '\r\033[K%s %s 中止：%s\n' "$(color 31 "⛔")" "$label" "$ABORT_REASON"
                       else
                         printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                          "$(pad_disp "⛔ 中止" 20)" "$(pad_disp "$fsize_h" 8)" \
+                          "$(pad_disp "⛔ 中止" 28)" "$(pad_disp "$fsize_h" 8)" \
                           "$(pad_disp "${pct}%" 6)" "$(pad_disp "${speed_kbps}k/s" 8)" \
-                          "$(pad_disp "$up_total_h" 8)" "$(pad_disp "超时/过慢" 8)"
+                          "$(pad_disp "$up_total_h" 8)" "$(pad_disp "传输超时" 8)"
                       fi
                       echo "::error::WebDAV 上传中止：${ABORT_REASON}"
-                      wpush_notice "WebDAV 上传中止：速率过慢/超时" "$content"
+                      wpush_notice "WebDAV 上传中止：传输超时" "$content"
                       if [ -n "${CURL_PID:-}" ]; then
                         kill -TERM "$CURL_PID" 2>/dev/null || true
                         sleep 2
@@ -621,7 +607,7 @@ jobs:
                     local bar; bar=$(awk -v p="$pct" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
                     printf '\r\033[K%s %s [%s] %3d%%  %s  ETA %s  %s' \
                       "$(color 36 "上传")" "$(color 33 "$label")" "$(color 32 "$bar")" \
-                      "$pct" "$speed_fmt" "$eta_fmt" "$(trunc_disp "$fname" 24)"
+                      "$pct" "$speed_fmt" "$eta_fmt" "$(trunc_disp "$fname" 28)"
                   else
                     local should=0 th
                     for th in 0 25 50 75 100; do
@@ -630,7 +616,7 @@ jobs:
                     if [ "$should" -eq 1 ] || [ "$pct" -ge 100 ]; then
                       last_pct=$pct
                       printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                        "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                        "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
                         "$(pad_disp "${pct}%" 6)" "$(pad_disp "$speed_fmt" 8)" \
                         "$(pad_disp "${up_h:-0}" 8)" "$(pad_disp "$eta_fmt" 8)"
                     fi
@@ -672,7 +658,7 @@ jobs:
                 printf '%s %s 失败 curl=%s HTTP=%s\n' "$(color 31 "❌")" "$label" "$rc" "$HTTP_CODE"
               else
                 printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                  "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                  "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
                   "$(pad_disp "❌" 6)" "$(pad_disp "-" 8)" "$(pad_disp "-" 8)" "$(pad_disp "HTTP ${HTTP_CODE}" 8)"
               fi
               return $rc
@@ -683,7 +669,7 @@ jobs:
               printf '%s %s 完成 %s (%s) HTTP=%s\n' "$(color 32 "✅")" "$label" "$fsize_h" "$fname" "$HTTP_CODE"
             else
               printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                "$(pad_disp "$(trunc_disp "$fname" 20)" 20)" "$(pad_disp "$fsize_h" 8)" \
+                "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
                 "$(pad_disp "100%" 6)" "$(pad_disp "-" 8)" "$(pad_disp "$fsize_h" 8)" "$(pad_disp "✅ 完成" 8)"
             fi
             return 0
@@ -740,7 +726,7 @@ jobs:
               fi
             else
               if [ "$MODE" = "table" ]; then
-                printf '├──────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
+                printf '├────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
                 local total_h done_h pct_total bar
                 total_h=$(numfmt --to=iec $TOTAL_BYTES); done_h=$(numfmt --to=iec $DONE_BYTES)
                 pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
