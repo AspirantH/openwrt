@@ -777,7 +777,7 @@ jobs:
               DOWNLOAD_LINK="${PUBLIC_PREFIX}${{ secrets.WEBDAV_PATH }}/${FILENAME}"
               ISO_DOWNLOAD_LINK="${PUBLIC_PREFIX}${{ secrets.WEBDAV_PATH }}/${ISO_FILENAME}"
             else
-              UPLOAD_STATUS="WebDAV 上传未完成（已发布至 GitHub Release）"
+              UPLOAD_STATUS="WebDAV 上传失败（已发布至 GitHub Release）"
               DOWNLOAD_LINK="${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.date }}_${{ matrix.target }}"
               ISO_DOWNLOAD_LINK="${DOWNLOAD_LINK}"
             fi
@@ -788,10 +788,10 @@ jobs:
             if [[ -n "$PLUGINS" ]]; then
               PLUGIN_LIST=$(echo "$PLUGINS" | sed 's/^/- /')
             else
-              PLUGIN_LIST="（未提取到插件列表）"
+              PLUGIN_LIST="（未提取到已安装软件包列表）"
             fi
 
-            CHANGED_PKGS_LIST="（本次无上游软件包变更）"
+            CHANGED_PKGS_LIST="（本次无软件包变更）"
             if [[ -n "${CHANGED_PACKAGES:-}" ]]; then
               CHANGED_PKGS_LIST=$(echo "$CHANGED_PACKAGES" | tr ',' '\n' | sed 's/^/- /')
             fi
@@ -809,7 +809,7 @@ jobs:
               "固件下载：${DOWNLOAD_LINK}" \
               "ISO 下载：${ISO_DOWNLOAD_LINK}" \
               "" \
-              "上游变更的软件包：" \
+              "变更的软件包：" \
               "${CHANGED_PKGS_LIST}" \
               "" \
               "主要插件：" \
