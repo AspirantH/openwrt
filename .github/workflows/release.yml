@@ -466,7 +466,6 @@ jobs:
 
           wpush_notice() {
             local title="$1" content="$2"
-            [ -z "${WPUSH:-}" ] && { echo "⚠️ 未配置 WPUSH，跳过通知"; return 0; }
             curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
               --data-urlencode "apikey=${WPUSH}" \
               --data-urlencode "title=${title}" \
@@ -565,7 +564,7 @@ jobs:
                     if [ "$speed_kbps" -lt "$MIN_SPEED_KBPS" ]; then
                       ABORT_REASON="平均速率过低 ${speed_kbps} kB/s < ${MIN_SPEED_KBPS} kB/s"
                     elif [ "$projected_total" -gt "$budget" ]; then
-                      ABORT_REASON="预计总耗时 $((projected_total/60)) 分钟 > 6 小时预算，已运行 $((elapsed_run/60)) 分钟，剩余预计 $((eta_sec/60)) 分钟"
+                      ABORT_REASON="预计总耗时 $((projected_total/60)) 分钟 > 6 小时配额，已运行 $((elapsed_run/60)) 分钟，剩余预计 $((eta_sec/60)) 分钟"
                     fi
 
                     if [ -n "$ABORT_REASON" ]; then
@@ -581,7 +580,7 @@ jobs:
                         "平均速率：$(( speed_avg / 1024 )) kB/s" \
                         "已运行：$(( elapsed_run/60 )) 分钟" \
                         "预计剩余：$(( eta_sec/60 )) 分钟" \
-                        "预算：6 小时" \
+                        "配额：6 小时" \
                         "" \
                         "日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
                       if [ "$MODE" = "live" ]; then
