@@ -258,7 +258,7 @@ jobs:
             echo >> .config
             cat devices/${{matrix.target}}/$CONFIG_FILE >> .config
           fi
-          if [ -f "devices/${{matrix.target}}/$DIY_SH" ]; then
+          if [ -f "devices/${{matrix.target}}/diy.sh" ]; then
             chmod +x devices/${{matrix.target}}/$DIY_SH
             echo "/bin/bash devices/${{matrix.target}}/$DIY_SH"
             /bin/bash "devices/${{matrix.target}}/$DIY_SH"
@@ -431,23 +431,23 @@ jobs:
             python3 -c 'import sys,unicodedata; s=sys.argv[1]; print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"
           }
           pad_disp() {
-            local s="$1" t="$2" w p
+            s="$1"; t="$2"; w p
             w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0
             printf '%s%*s' "$s" "$p" ""
           }
           trunc_disp() {
-            local s="$1" n="$2"
+            s="$1"; n="$2"
             echo "$s" | awk -v n="$n" 'BEGIN{FS=""} {w=0;o="";for(i=1;i<=NF;i++){c=$i;cw=(c ~ /[\x80-\xFF]/)?2:1;if(w+cw>n)break;o=o c;w+=cw}print o}'
           }
           fmt_eta() {
-            local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
+            s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
             printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60))
           }
           color() {
             if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
           }
           int_or_zero() {
-            local v="$1"
+            v="$1"
             case "$v" in
               ''|*[!0-9]*) echo 0 ;;
               *) echo "$v" ;;
@@ -465,7 +465,7 @@ jobs:
           elapsed_since_run() { echo $(( $(now_epoch) - RUN_START_EPOCH )); }
 
           wpush_notice() {
-            local title="$1" content="$2"
+            title="$1"; content="$2"
             curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
               --data-urlencode "apikey=${WPUSH}" \
               --data-urlencode "title=${title}" \
@@ -487,30 +487,27 @@ jobs:
           }
 
           upload_one() {
-            local local_file="$1" remote_url="$2" label="$3"
-            local fname fsize fsize_h
+            local_file="$1"; remote_url="$2"; label="$3"
             fname="$(basename "$local_file")"
             fsize=$(stat -c%s "$local_file")
             fsize_h=$(numfmt --to=iec "$fsize" | tr -d ' ')
             TOTAL_BYTES=$((TOTAL_BYTES + fsize))
 
-            local prog_file
             prog_file="$(mktemp)"
 
             (
-              local last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
-              local retry_count=0 last_retry_line=""
-              local last_check_t=0
+              last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
+              retry_count=0 last_retry_line=""
+              last_check_t=0
               while [ ! -f "${prog_file}.done" ]; do
                 if [ -s "$prog_file" ]; then
-                  local line pct_raw pct up_h remain_str up_bytes now
                   line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
 
                   if echo "$line" | grep -qiE 'retry|retrying|retries left'; then
                     if [ "$line" != "$last_retry_line" ]; then
                       last_retry_line="$line"; retry_count=$((retry_count+1))
-                      local secs_left; secs_left=$(echo "$line" | grep -oE '[0-9]+ seconds?' | head -n1 | grep -oE '[0-9]+')
-                      local tip=""; [ -n "${secs_left:-}" ] && tip="（${secs_left}s 后重试）"
+                      secs_left=$(echo "$line" | grep -oE '[0-9]+ seconds?' | head -n1 | grep -oE '[0-9]+')
+                      tip=""; [ -n "${secs_left:-}" ] && tip="（${secs_left}s 后重试）"
                       if [ "$MODE" = "live" ]; then
                         printf '\r\033[K%s %s 第 %d 次重试%s\n' "$(color 33 "🔄")" "$label" "$retry_count" "$tip"
                       else
@@ -534,32 +531,32 @@ jobs:
                   up_bytes=$(int_or_zero "$up_bytes")
                   now=$(now_epoch)
                   if [ "$last_t" -gt 0 ] && [ "$now" -gt "$last_t" ]; then
-                    local dt=$((now-last_t)) du=$((up_bytes-last_up))
+                    dt=$((now-last_t)); du=$((up_bytes-last_up))
                     [ "$dt" -gt 0 ] && [ "$du" -ge 0 ] && speed_avg=$(( (speed_avg*samples + du/dt) / (samples+1) ))
                     samples=$((samples+1))
                   fi
                   last_up=$up_bytes; last_t=$now
 
-                  local speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(numfmt --to=iec $speed_avg)/s"
-                  local eta_fmt="-"
+                  speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(numfmt --to=iec $speed_avg)/s"
+                  eta_fmt="-"
                   if [ "$speed_avg" -gt 0 ] && [ "$up_bytes" -gt 0 ] && [ "$up_bytes" -lt "$fsize" ]; then
                     eta_fmt=$(fmt_eta $(( (fsize-up_bytes)/speed_avg )))
                   fi
                   [ -n "$remain_str" ] && [ "$MODE" = "live" ] && eta_fmt="$remain_str"
 
-                  local do_check=0
+                  do_check=0
                   for th in 5 10 20 40 60 80; do
                     [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && do_check=1
                   done
                   [ $((now-last_check_t)) -ge "$CHECK_EVERY_SEC" ] && do_check=1
                   if [ "$do_check" -eq 1 ] && [ "$speed_avg" -gt 0 ]; then
                     last_check_t=$now
-                    local speed_kbps=$(( speed_avg / 1024 ))
-                    local remain_bytes=$(( fsize - up_bytes ))
-                    local eta_sec=$(( remain_bytes / speed_avg ))
-                    local elapsed_run=$(elapsed_since_run)
-                    local projected_total=$(( elapsed_run + eta_sec ))
-                    local budget=$JOB_BUDGET_SEC
+                    speed_kbps=$(( speed_avg / 1024 ))
+                    remain_bytes=$(( fsize - up_bytes ))
+                    eta_sec=$(( remain_bytes / speed_avg ))
+                    elapsed_run=$(elapsed_since_run)
+                    projected_total=$(( elapsed_run + eta_sec ))
+                    budget=$JOB_BUDGET_SEC
 
                     if [ "$speed_kbps" -lt "$MIN_SPEED_KBPS" ]; then
                       ABORT_REASON="平均速率过低 ${speed_kbps} kB/s < ${MIN_SPEED_KBPS} kB/s"
@@ -568,9 +565,7 @@ jobs:
                     fi
 
                     if [ -n "$ABORT_REASON" ]; then
-                      local up_total_h
                       up_total_h=$(numfmt --to=iec "$up_bytes" 2>/dev/null || echo "$up_bytes")
-                      local content
                       content=$(printf '%s\n' \
                         "WebDAV 上传已中止：${ABORT_REASON}" \
                         "" \
@@ -603,12 +598,12 @@ jobs:
                   fi
 
                   if [ "$MODE" = "live" ]; then
-                    local bar; bar=$(awk -v p="$pct" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
+                    bar=$(awk -v p="$pct" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
                     printf '\r\033[K%s %s [%s] %3d%%  %s  ETA %s  %s' \
                       "$(color 36 "上传")" "$(color 33 "$label")" "$(color 32 "$bar")" \
                       "$pct" "$speed_fmt" "$eta_fmt" "$(trunc_disp "$fname" 28)"
                   else
-                    local should=0 th
+                    should=0
                     for th in 0 25 50 75 100; do
                       [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && should=1
                     done
@@ -625,7 +620,7 @@ jobs:
               done
               [ "$MODE" = "live" ] && printf '\n'
             ) &
-            local rpid=$!
+            rpid=$!
 
             set +e
             curl --progress-bar \
@@ -639,7 +634,7 @@ jobs:
               -w '%{http_code}\n' -o /dev/null \
               "$remote_url" > "${prog_file}" 2>&1 &
             CURL_PID=$!
-            wait "$CURL_PID"; local rc=$?
+            wait "$CURL_PID"; rc=$?
             set -e
 
             touch "${prog_file}.done"
@@ -726,7 +721,7 @@ jobs:
             else
               if [ "$MODE" = "table" ]; then
                 printf '├────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
-                local total_h done_h pct_total bar
+                total_h done_h pct_total bar
                 total_h=$(numfmt --to=iec $TOTAL_BYTES); done_h=$(numfmt --to=iec $DONE_BYTES)
                 pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
                 bar=$(awk -v p="$pct_total" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
