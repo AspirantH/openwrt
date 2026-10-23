@@ -279,6 +279,28 @@ jobs:
         run: |
           cd openwrt
           make defconfig
+
+          echo "========== CHECK: tar package in feeds =========="
+          if ls -d package/feeds/packages/tar >/dev/null 2>&1; then
+            echo "✅ tar package FOUND in package/feeds/packages"
+            ls -la package/feeds/packages/tar/
+          else
+            echo "❌ tar package NOT FOUND in package/feeds/packages"
+            echo "--- Available packages in feeds (first 30) ---"
+            ls package/feeds/packages/ 2>/dev/null | head -30 || echo "package/feeds/packages directory missing"
+          fi
+
+          echo "========== CHECK: CONFIG_PACKAGE_tar after defconfig =========="
+          if grep -q "CONFIG_PACKAGE_tar=y" .config; then
+            echo "✅ CONFIG_PACKAGE_tar=y still present after defconfig"
+          else
+            echo "❌ CONFIG_PACKAGE_tar=y MISSING after defconfig"
+            grep "CONFIG_PACKAGE_tar" .config || echo "(no CONFIG_PACKAGE_tar line at all)"
+          fi
+
+          echo "========== CHECK: tar-related dependencies =========="
+          grep -E "CONFIG_PACKAGE_(xz|bzip2|libacl|libattr|zlib)" .config || echo "(no tar-related deps found)"
+
           if [[ ! "${{matrix.target}}" =~ (amlogic_meson8b|armsr_armv8|bcm27xx_*|rockchip_armv8|sunxi_*|x86_*|siflower_*) ]]; then
           sed -n '/# Wireless Drivers/,/# end of Wireless Drivers/p' .config | sed -e 's/=m/=n/' >>.config
           sed -i "s/\(kmod-qca.*\)=m/\1=n/" .config
@@ -424,40 +446,23 @@ jobs:
         run: |
           set -uo pipefail
 
-          if [ -t 1 ] && [ "${GITHUB_ACTIONS:-}" != "true" ]; then MODE="live"; else MODE="table"; fi
-          echo "上传进度模式: $MODE"
+          echo "上传进度模式: table"
 
-          disp_width() {
-            python3 -c 'import sys,unicodedata; s=sys.argv[1]; print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"
-          }
-          pad_disp() {
-            local s="$1" t="$2" w p
-            w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0
-            printf '%s%*s' "$s" "$p" ""
-          }
-          trunc_disp() {
-            local s="$1" n="$2"
-            python3 -c $'import sys,unicodedata\ns=sys.argv[1]; n=int(sys.argv[2]); out=""; w=0\nfor c in s:\n    cw=2 if unicodedata.east_asian_width(c) in "WF" else 1\n    if w+cw>n: break\n    out+=c; w+=cw\nprint(out)' "$s" "$n"
+          fmt_size() {
+            local b=${1:-0}
+            case "$b" in ''|*[!0-9]*) b=0 ;; esac
+            numfmt --to=iec "$b" 2>/dev/null | tr -d ' '
           }
           fmt_eta() {
             local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
             printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60))
           }
-          color() {
-            if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
-          }
           int_or_zero() {
             local v="$1"
-            case "$v" in
-              ''|*[!0-9]*) echo 0 ;;
-              *) echo "$v" ;;
-            esac
+            case "$v" in ''|*[!0-9]*) echo 0 ;; *) echo "$v" ;; esac
           }
-
-          TOTAL_BYTES=0; DONE_BYTES=0; HTTP_CODE="?"
-          ABORT_REASON=""
-
           now_epoch() { date +%s; }
+
           RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "0")
           case "$RUN_START_EPOCH" in ''|*[!0-9]*) RUN_START_EPOCH=0 ;; esac
           [ "$RUN_START_EPOCH" -le 0 ] 2>/dev/null && RUN_START_EPOCH=$(now_epoch)
@@ -469,37 +474,28 @@ jobs:
               --data-urlencode "apikey=${WPUSH}" \
               --data-urlencode "title=${title}" \
               --data-urlencode "content=${content}" \
-              -o /dev/null -w "WPush HTTP %{http_code}\n" || true
+              -o /dev/null -w "WPush HTTP %{http_code}\n" 2>/dev/null || true
           }
 
-          print_header() {
-            [ "$MODE" = "live" ] && return 0
-            printf '┌────────────────────────────┬──────────┬────────┬──────────┬──────────┬──────────┐\n'
-            printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-              "$(pad_disp 文件 28)" "$(pad_disp 大小 8)" "$(pad_disp 进度 6)" \
-              "$(pad_disp 速度 8)" "$(pad_disp 已传 8)" "$(pad_disp 剩余 8)"
-            printf '├────────────────────────────┼──────────┼────────┼──────────┼──────────┼──────────┤\n'
-          }
-          print_footer() {
-            [ "$MODE" = "live" ] && return 0
-            printf '└────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┘\n'
-          }
+          TOTAL_BYTES=0
+          DONE_BYTES=0
+          HTTP_CODE="?"
+          ABORT_REASON=""
+          CURL_PID=""
 
           upload_one() {
             local local_file="$1" remote_url="$2" label="$3"
             local fname fsize fsize_h prog_file rpid rc
             fname="$(basename "$local_file")"
             fsize=$(stat -c%s "$local_file")
-            fsize_h=$(numfmt --to=iec "$fsize" | tr -d ' ')
+            fsize_h=$(fmt_size "$fsize")
             TOTAL_BYTES=$((TOTAL_BYTES + fsize))
 
             prog_file="$(mktemp)"
 
             (
-              local last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
-              local retry_count=0 last_retry_line="" last_check_t=0
-              local line pct_raw pct up_h remain_str up_bytes now
-              local speed_fmt eta_fmt do_check th speed_kbps remain_bytes eta_sec elapsed_run projected_total budget up_total_h content bar should dt du secs_left tip
+              last_pct=-10; last_up=0; last_t=0; speed_avg=0; samples=0
+              retry_count=0; last_retry_line=""; last_check_t=0
               while [ ! -f "${prog_file}.done" ]; do
                 if [ -s "$prog_file" ]; then
                   line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
@@ -507,23 +503,16 @@ jobs:
                   if echo "$line" | grep -qiE 'retry|retrying|retries left'; then
                     if [ "$line" != "$last_retry_line" ]; then
                       last_retry_line="$line"; retry_count=$((retry_count+1))
-                      secs_left=$(echo "$line" | grep -oE '[0-9]+ seconds?' | head -n1 | grep -oE '[0-9]+')
-                      tip=""; [ -n "${secs_left:-}" ] && tip="（${secs_left}s 后重试）"
-                      if [ "$MODE" = "live" ]; then
-                        printf '\r\033[K%s %s 第 %d 次重试%s\n' "$(color 33 "🔄")" "$label" "$retry_count" "$tip"
-                      else
-                        printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                          "$(pad_disp "🔄 重试" 28)" "$(pad_disp "-" 8)" \
-                          "$(pad_disp "第${retry_count}次" 6)" "$(pad_disp "-" 8)" \
-                          "$(pad_disp "-" 8)" "$(pad_disp "${secs_left:-?}s 后" 8)"
-                      fi
+                      secs_left=$(echo "$line" | grep -m1 -oE '[0-9]+ seconds?' 2>/dev/null | grep -m1 -oE '[0-9]+' 2>/dev/null)
+                      tip=""; [ -n "${secs_left:-}" ] && tip=" (${secs_left}s 后重试)"
+                      echo "[RETRY] ${label}: 第 ${retry_count} 次重试${tip}"
                     fi
                     sleep 0.3; continue
                   fi
 
-                  pct_raw=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -n1 | tr -d '%')
-                  up_h=$(echo "$line" | grep -oE '[0-9]+(\.[0-9]+)?[kMG]?' | head -n1)
-                  remain_str=$(echo "$line" | grep -oE '[0-9]+:[0-9]{2}:[0-9]{2}' | head -n1)
+                  pct_raw=$(echo "$line" | grep -m1 -oE '[0-9]+(\.[0-9]+)?%' 2>/dev/null | tr -d '%')
+                  up_h=$(echo "$line" | grep -m1 -oE '[0-9]+(\.[0-9]+)?[kMG]?' 2>/dev/null)
+                  remain_str=$(echo "$line" | grep -m1 -oE '[0-9]+:[0-9]{2}:[0-9]{2}' 2>/dev/null)
                   [ -z "$pct_raw" ] && { sleep 0.3; continue; }
                   pct=${pct_raw%.*}
                   pct=$(int_or_zero "$pct")
@@ -538,12 +527,12 @@ jobs:
                   fi
                   last_up=$up_bytes; last_t=$now
 
-                  speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(numfmt --to=iec $speed_avg)/s"
+                  speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(fmt_size "$speed_avg")/s"
                   eta_fmt="-"
                   if [ "$speed_avg" -gt 0 ] && [ "$up_bytes" -gt 0 ] && [ "$up_bytes" -lt "$fsize" ]; then
                     eta_fmt=$(fmt_eta $(( (fsize-up_bytes)/speed_avg )))
                   fi
-                  [ -n "$remain_str" ] && [ "$MODE" = "live" ] && eta_fmt="$remain_str"
+                  [ -n "$remain_str" ] && eta_fmt="$remain_str"
 
                   do_check=0
                   for th in 5 10 20 40 60 80; do
@@ -566,7 +555,7 @@ jobs:
                     fi
 
                     if [ -n "$ABORT_REASON" ]; then
-                      up_total_h=$(numfmt --to=iec "$up_bytes" 2>/dev/null || echo "$up_bytes")
+                      up_total_h=$(fmt_size "$up_bytes")
                       content=$(printf '%s\n' \
                         "WebDAV 上传已中止：${ABORT_REASON}" \
                         "" \
@@ -579,14 +568,7 @@ jobs:
                         "配额：6 小时" \
                         "" \
                         "日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-                      if [ "$MODE" = "live" ]; then
-                        printf '\r\033[K%s %s 中止：%s\n' "$(color 31 "⛔")" "$label" "$ABORT_REASON"
-                      else
-                        printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                          "$(pad_disp "⛔ 中止" 28)" "$(pad_disp "$fsize_h" 8)" \
-                          "$(pad_disp "${pct}%" 6)" "$(pad_disp "${speed_kbps}k/s" 8)" \
-                          "$(pad_disp "$up_total_h" 8)" "$(pad_disp "传输超时" 8)"
-                      fi
+                      echo "[ABORT] ${label}: ${ABORT_REASON}"
                       echo "::error::WebDAV 上传中止：${ABORT_REASON}"
                       wpush_notice "WebDAV 上传中止：传输超时" "$content"
                       if [ -n "${CURL_PID:-}" ]; then
@@ -598,28 +580,17 @@ jobs:
                     fi
                   fi
 
-                  if [ "$MODE" = "live" ]; then
-                    bar=$(awk -v p="$pct" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
-                    printf '\r\033[K%s %s [%s] %3d%%  %s  ETA %s  %s' \
-                      "$(color 36 "上传")" "$(color 33 "$label")" "$(color 32 "$bar")" \
-                      "$pct" "$speed_fmt" "$eta_fmt" "$(trunc_disp "$fname" 28)"
-                  else
-                    should=0
-                    for th in 0 25 50 75 100; do
-                      [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && should=1
-                    done
-                    if [ "$should" -eq 1 ] || [ "$pct" -ge 100 ]; then
-                      last_pct=$pct
-                      printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                        "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
-                        "$(pad_disp "${pct}%" 6)" "$(pad_disp "$speed_fmt" 8)" \
-                        "$(pad_disp "${up_h:-0}" 8)" "$(pad_disp "$eta_fmt" 8)"
-                    fi
+                  should=0
+                  for th in 0 25 50 75 100; do
+                    [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && should=1
+                  done
+                  if [ "$should" -eq 1 ] || [ "$pct" -ge 100 ]; then
+                    last_pct=$pct
+                    echo "[${label}] ${pct}%  已传 ${up_h:-0} / ${fsize_h}  速度 ${speed_fmt}  剩余 ${eta_fmt}"
                   fi
                 fi
                 sleep 0.3
               done
-              [ "$MODE" = "live" ] && printf '\n'
             ) &
             rpid=$!
 
@@ -640,7 +611,7 @@ jobs:
 
             touch "${prog_file}.done"
             wait "$rpid" 2>/dev/null || true
-            HTTP_CODE=$(tail -n 8 "${prog_file}" | grep -E '^[0-9]{3}$' | tail -n1); [ -z "$HTTP_CODE" ] && HTTP_CODE="?"
+            HTTP_CODE=$(tail -n 8 "${prog_file}" | grep -m1 -E '^[0-9]{3}$' 2>/dev/null); [ -z "$HTTP_CODE" ] && HTTP_CODE="?"
             rm -f "$prog_file" "${prog_file}.done"
 
             if [ -n "$ABORT_REASON" ]; then
@@ -649,24 +620,12 @@ jobs:
             fi
 
             if [ $rc -ne 0 ]; then
-              if [ "$MODE" = "live" ]; then
-                printf '%s %s 失败 curl=%s HTTP=%s\n' "$(color 31 "❌")" "$label" "$rc" "$HTTP_CODE"
-              else
-                printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                  "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
-                  "$(pad_disp "❌" 6)" "$(pad_disp "-" 8)" "$(pad_disp "-" 8)" "$(pad_disp "HTTP ${HTTP_CODE}" 8)"
-              fi
+              echo "[FAIL] ${label}: curl=${rc} HTTP=${HTTP_CODE}"
               return $rc
             fi
 
             DONE_BYTES=$((DONE_BYTES + fsize))
-            if [ "$MODE" = "live" ]; then
-              printf '%s %s 完成 %s (%s) HTTP=%s\n' "$(color 32 "✅")" "$label" "$fsize_h" "$fname" "$HTTP_CODE"
-            else
-              printf '│ %s │ %s │ %s │ %s │ %s │ %s │\n' \
-                "$(pad_disp "$(trunc_disp "$fname" 28)" 28)" "$(pad_disp "$fsize_h" 8)" \
-                "$(pad_disp "100%" 6)" "$(pad_disp "-" 8)" "$(pad_disp "$fsize_h" 8)" "$(pad_disp "✅ 完成" 8)"
-            fi
+            echo "[DONE] ${label}: ${fsize_h}  上传完成 HTTP=${HTTP_CODE}"
             return 0
           }
 
@@ -681,8 +640,6 @@ jobs:
           esac
           WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/}"
           echo "WEBDAV_PUBLIC_URL=${WEBDAV_PUBLIC_URL}" >> $GITHUB_ENV
-          echo "上传地址前缀: 已设置（长度 ${#REMOTE_DIR}）"
-          echo "公开下载前缀: 已设置（长度 ${#WEBDAV_PUBLIC_URL}）"
 
           FILENAME="$(basename "$RELEASE_FILE")"
           ENCODED_FILENAME="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$FILENAME")"
@@ -692,13 +649,11 @@ jobs:
           ISO_REMOTE="${REMOTE_DIR}/${ISO_ENCODED}"
 
           echo "Workflow 已运行: $(elapsed_since_run) 秒"
-          print_header
           set +e
           upload_one "$RELEASE_FILE" "$REMOTE_FILE" "固件"
           CURL_RC=$?
           set -e
           if [ $CURL_RC -ne 0 ]; then
-            print_footer
             if [ $CURL_RC -eq 66 ]; then
               echo "::error::WebDAV 固件上传因速率过慢/超时被中止"
             else
@@ -713,27 +668,20 @@ jobs:
             ISO_RC=$?
             set -e
             if [ $ISO_RC -ne 0 ]; then
-              print_footer
               if [ $ISO_RC -eq 66 ]; then
                 echo "::warning::WebDAV ISO 上传因速率过慢/超时被中止（固件已上传成功）"
               else
                 echo "::warning::WebDAV ISO 上传失败，curl=$ISO_RC HTTP=$HTTP_CODE（固件已上传成功）"
               fi
             else
-              if [ "$MODE" = "table" ]; then
-                printf '├────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
-                total_h=$(numfmt --to=iec $TOTAL_BYTES); done_h=$(numfmt --to=iec $DONE_BYTES)
-                pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
-                bar=$(awk -v p="$pct_total" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
-                printf '│ 总进度 [%s] %3d%%  %s / %s\n' "$bar" "$pct_total" "$done_h" "$total_h"
-              fi
-              print_footer
+              total_h=$(fmt_size "$TOTAL_BYTES"); done_h=$(fmt_size "$DONE_BYTES")
+              pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
+              echo "[TOTAL] ${pct_total}%  ${done_h} / ${total_h}"
             fi
           else
-            echo "⚠️ 未找到 ISO 文件，跳过 ISO 上传"
-            print_footer
+            echo "[SKIP] 未找到 ISO 文件，跳过 ISO 上传"
           fi
-          echo "✅ WebDAV 上传流程结束"
+          echo "[DONE] WebDAV 上传流程结束"
 
       - name: Clean
         if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
@@ -793,7 +741,7 @@ jobs:
 
             TITLE="OpenWrt 编译成功"
             MSG=$(printf '%s\n' \
-              "OpenWrt 固件编译完成" \
+              "OpenWrt 编译完成" \
               "" \
               "设备：${{ matrix.target }}" \
               "编译日期：${{ env.date2 }}" \
