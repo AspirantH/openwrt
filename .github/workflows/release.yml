@@ -453,23 +453,23 @@ jobs:
             python3 -c 'import sys,unicodedata; s=sys.argv[1]; print(sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s))' "$1"
           }
           pad_disp() {
-            s="$1"; t="$2"; w p
+            local s="$1" t="$2" w p
             w=$(disp_width "$s"); p=$((t-w)); [ $p -lt 0 ] && p=0
             printf '%s%*s' "$s" "$p" ""
           }
           trunc_disp() {
-            s="$1"; n="$2"
-            echo "$s" | awk -v n="$n" 'BEGIN{FS=""} {w=0;o="";for(i=1;i<=NF;i++){c=$i;cw=(c ~ /[\x80-\xFF]/)?2:1;if(w+cw>n)break;o=o c;w+=cw}print o}'
+            local s="$1" n="$2"
+            python3 -c $'import sys,unicodedata\ns=sys.argv[1]; n=int(sys.argv[2]); out=""; w=0\nfor c in s:\n    cw=2 if unicodedata.east_asian_width(c) in "WF" else 1\n    if w+cw>n: break\n    out+=c; w+=cw\nprint(out)' "$s" "$n"
           }
           fmt_eta() {
-            s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
+            local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
             printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60))
           }
           color() {
             if [ "$MODE" = "live" ]; then printf '\033[%sm%s\033[0m' "$1" "$2"; else printf '%s' "$2"; fi
           }
           int_or_zero() {
-            v="$1"
+            local v="$1"
             case "$v" in
               ''|*[!0-9]*) echo 0 ;;
               *) echo "$v" ;;
@@ -480,14 +480,13 @@ jobs:
           ABORT_REASON=""
 
           now_epoch() { date +%s; }
-          RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "")
-          case "$RUN_START_EPOCH" in
-            ''|*[!0-9]*) RUN_START_EPOCH=$(now_epoch) ;;
-          esac
+          RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "0")
+          case "$RUN_START_EPOCH" in ''|*[!0-9]*) RUN_START_EPOCH=0 ;; esac
+          [ "$RUN_START_EPOCH" -le 0 ] 2>/dev/null && RUN_START_EPOCH=$(now_epoch)
           elapsed_since_run() { echo $(( $(now_epoch) - RUN_START_EPOCH )); }
 
           wpush_notice() {
-            title="$1"; content="$2"
+            local title="$1" content="$2"
             curl -sS -X POST 'https://api.wpush.cn/api/v1/send' \
               --data-urlencode "apikey=${WPUSH}" \
               --data-urlencode "title=${title}" \
@@ -509,7 +508,8 @@ jobs:
           }
 
           upload_one() {
-            local_file="$1"; remote_url="$2"; label="$3"
+            local local_file="$1" remote_url="$2" label="$3"
+            local fname fsize fsize_h prog_file rpid rc
             fname="$(basename "$local_file")"
             fsize=$(stat -c%s "$local_file")
             fsize_h=$(numfmt --to=iec "$fsize" | tr -d ' ')
@@ -518,9 +518,10 @@ jobs:
             prog_file="$(mktemp)"
 
             (
-              last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
-              retry_count=0 last_retry_line=""
-              last_check_t=0
+              local last_pct=-1 last_up=0 last_t=0 speed_avg=0 samples=0
+              local retry_count=0 last_retry_line="" last_check_t=0
+              local line pct_raw pct up_h remain_str up_bytes now
+              local speed_fmt eta_fmt do_check th speed_kbps remain_bytes eta_sec elapsed_run projected_total budget up_total_h content bar should dt du secs_left tip
               while [ ! -f "${prog_file}.done" ]; do
                 if [ -s "$prog_file" ]; then
                   line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
@@ -743,7 +744,6 @@ jobs:
             else
               if [ "$MODE" = "table" ]; then
                 printf '├────────────────────────────┴──────────┴────────┴──────────┴──────────┴──────────┤\n'
-                total_h done_h pct_total bar
                 total_h=$(numfmt --to=iec $TOTAL_BYTES); done_h=$(numfmt --to=iec $DONE_BYTES)
                 pct_total=$(( DONE_BYTES * 100 / (TOTAL_BYTES>0?TOTAL_BYTES:1) ))
                 bar=$(awk -v p="$pct_total" 'BEGIN{n=int(p/5); s=""; for(i=0;i<40;i++){s=s (i<n?"█":"░")} print s}')
