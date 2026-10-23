@@ -280,27 +280,9 @@ jobs:
           cd openwrt
           make defconfig
 
-          echo "========== CHECK: tar package in feeds =========="
-          if ls -d package/feeds/packages/tar >/dev/null 2>&1; then
-            echo "✅ tar package FOUND in package/feeds/packages"
-            ls -la package/feeds/packages/tar/
-          else
-            echo "❌ tar package NOT FOUND in package/feeds/packages"
-            echo "--- Available packages in feeds (first 30) ---"
-            ls package/feeds/packages/ 2>/dev/null | head -30 || echo "package/feeds/packages directory missing"
-          fi
+          grep -E "CONFIG_PACKAGE_luci-(app|theme)-vantage" .config
 
-          echo "========== CHECK: CONFIG_PACKAGE_tar after defconfig =========="
-          if grep -q "CONFIG_PACKAGE_tar=y" .config; then
-            echo "✅ CONFIG_PACKAGE_tar=y still present after defconfig"
-          else
-            echo "❌ CONFIG_PACKAGE_tar=y MISSING after defconfig"
-            grep "CONFIG_PACKAGE_tar" .config || echo "(no CONFIG_PACKAGE_tar line at all)"
-          fi
-
-          echo "========== CHECK: tar-related dependencies =========="
-          grep -E "CONFIG_PACKAGE_(xz|bzip2|libacl|libattr|zlib)" .config || echo "(no tar-related deps found)"
-
+          
           if [[ ! "${{matrix.target}}" =~ (amlogic_meson8b|armsr_armv8|bcm27xx_*|rockchip_armv8|sunxi_*|x86_*|siflower_*) ]]; then
           sed -n '/# Wireless Drivers/,/# end of Wireless Drivers/p' .config | sed -e 's/=m/=n/' >>.config
           sed -i "s/\(kmod-qca.*\)=m/\1=n/" .config
