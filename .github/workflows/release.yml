@@ -639,6 +639,7 @@ jobs:
             */dav/) WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/dav/}" ;;
           esac
           WEBDAV_PUBLIC_URL="${WEBDAV_PUBLIC_URL%/}"
+          echo "::add-mask::${WEBDAV_PUBLIC_URL}"
           echo "WEBDAV_PUBLIC_URL=${WEBDAV_PUBLIC_URL}" >> $GITHUB_ENV
 
           FILENAME="$(basename "$RELEASE_FILE")"
