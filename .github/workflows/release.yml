@@ -258,7 +258,7 @@ jobs:
             echo >> .config
             cat devices/${{matrix.target}}/$CONFIG_FILE >> .config
           fi
-          if [ -f "devices/${{matrix.target}}/diy.sh" ]; then
+          if [ -f "devices/${{matrix.target}}/$DIY_SH" ]; then
             chmod +x devices/${{matrix.target}}/$DIY_SH
             echo "/bin/bash devices/${{matrix.target}}/$DIY_SH"
             /bin/bash "devices/${{matrix.target}}/$DIY_SH"
