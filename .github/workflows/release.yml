@@ -400,8 +400,6 @@ jobs:
           name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}"
           tag_name: "${{ env.date }}_${{matrix.target}}"
           body: |
-            OpenWrt firmware compiled from ${{ github.repository }}
-
             - 固件: `$${{ env.RELEASE_FILE }}`
             - ISO: `${{ env.ISO_NAME }}`
           draft: false
