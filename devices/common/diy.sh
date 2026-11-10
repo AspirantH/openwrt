@@ -87,7 +87,6 @@ sed -i \
 	package/feeds/AspirantH/*/Makefile
 
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-sed -i '/^apk =/,/--preserve-env/{ /--preserve-env/ { /--force-overwrite/! s/$/ \\\n--force-overwrite/; }; }' include/rootfs.mk
 
 LUCI_MOD_SYSTEM="feeds/luci/modules/luci-mod-system"
 if [ -d "$LUCI_MOD_SYSTEM" ]; then

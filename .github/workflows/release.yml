@@ -18,6 +18,7 @@ on:
 env:
   REPO_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
   WECHAT_NOTICE: ${{ secrets.WECHAT_NOTICE }}
+  WPUSH: ${{ secrets.WPUSH }}
   TZ: Asia/Shanghai
 
 jobs:
@@ -132,7 +133,7 @@ jobs:
           else
           REPO_BRANCH="openwrt-25.12"
           fi
-          
+
           if [[ ! "${{ env.REPO_BRANCH }}" && "$REPO_URL" == "https://github.com/openwrt/openwrt" ]]; then
               git clone $REPO_URL -b $REPO_BRANCH openwrt
           elif [[ ! "${{ env.REPO_BRANCH }}" ]]; then
@@ -266,7 +267,7 @@ jobs:
           prerelease: false
           generate_release_notes: false
 
-      - name: Upload firmware to WebDAV
+      - name: Upload
         id: upload-webdav
         if: env.RELEASE_FILE != ''
         continue-on-error: true
@@ -279,14 +280,14 @@ jobs:
           curl -X MKCOL -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/" || true
           curl -T "$RELEASE_FILE" -u "${WEBDAV_USER}:${WEBDAV_PASS}" "${WEBDAV_URL}${WEBDAV_PATH}/$(basename "$RELEASE_FILE")"
 
-      - name: Delete
+      - name: Clean
         if: steps.upload-webdav.outcome == 'success' && env.RELEASE_FILE != ''
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_OPENWRT }}
         run: |
           TAG_NAME="${{ env.date }}_${{matrix.target}}"
           echo "Deleting release ${TAG_NAME} (WebDAV succeeded) ..."
-          gh release delete "${TAG_NAME}" -y --repo "${{ github.repository }}"
+          gh release delete "${TAG_NAME}" -y --cleanup-tag --repo "${{ github.repository }}"
 
       - name: WPush NOTICE
         continue-on-error: true
