@@ -316,6 +316,7 @@ jobs:
 
       - name: Organize files
         id: organize
+        continue-on-error: true
         run: |
           shopt -s extglob
           cd openwrt/bin/targets/*/*/

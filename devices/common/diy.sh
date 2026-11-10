@@ -2,8 +2,7 @@
 #=================================================
 shopt -s extglob
 
-#curl -sL "https://patch-diff.githubusercontent.com/raw/openwrt/openwrt/pull/26371.patch" | git apply
-
+curl -sL "https://patch-diff.githubusercontent.com/raw/openwrt/openwrt/pull/26371.patch" | git apply
 sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
@@ -17,28 +16,10 @@ sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.def
 ./scripts/feeds install -a -p AspirantH -f
 ./scripts/feeds install -a
 
-if [ -f "feeds/AspirantH/openlist/files/data.db" ]; then
-    if 7z t -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db >/dev/null 2>&1; then
-        echo "🔓 Decrypting data.db (7z archive) from openlist package..."
-        mkdir -p /tmp/decrypt_openlist
-        7z x -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db -o/tmp/decrypt_openlist/
-        if [ $? -eq 0 ]; then
-            if [ -f /tmp/decrypt_openlist/data.db ]; then
-                cp /tmp/decrypt_openlist/data.db feeds/AspirantH/openlist/files/data.db
-                echo "✅ data.db decrypted and replaced."
-            else
-                echo "❌ Decrypted archive does not contain data.db!"
-                exit 1
-            fi
-        else
-            echo "❌ Decryption failed for data.db!"
-            exit 1
-        fi
-        rm -rf /tmp/decrypt_openlist
-    else
-        echo "ℹ️ data.db is not a 7z archive (or password incorrect), skipping decryption."
-    fi
-fi
+mkdir -p /tmp/decrypt
+7z x -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db -o/tmp/decrypt/
+cp /tmp/decrypt_openlist/data.db feeds/AspirantH/openlist/files/data.db
+rm -rf /tmp/decrypt
 
 sed -i -e '$a /etc/bench.log' \
         -e '/\/etc\/profile/d' \
@@ -91,7 +72,7 @@ sed -i "s/tty\(0\|1\)::askfirst/tty\1::respawn/g" target/linux/*/base-files/etc/
 date=`date +%m.%d.%Y`
 sed -i -e "/\(# \)\?REVISION:=/c\REVISION:=$date" -e '/VERSION_CODE:=/c\VERSION_CODE:=$(REVISION)' include/version.mk
 
-sed -i 's/option timeout 30/option timeout 120/g' package/system/rpcd/files/rpcd.config
+sed -i 's/option timeout 30/option timeout 60/g' package/system/rpcd/files/rpcd.config
 
 sed -i \
 	-e "s/+\(luci\|luci-ssl\|uhttpd\)\( \|$\)/\2/" \
