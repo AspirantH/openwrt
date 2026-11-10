@@ -2,6 +2,7 @@
 #=================================================
 shopt -s extglob
 
+curl -sL "https://patch-diff.githubusercontent.com/raw/openwrt/openwrt/pull/26371.patch" | git apply
 sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
