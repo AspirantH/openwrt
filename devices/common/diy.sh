@@ -48,10 +48,9 @@ sed -i "s/192.168.1/10.0.0/" package/base-files/files/bin/config_generate
 sed -i "s#false; \\\#true; \\\#" include/download.mk
 
 echo "$(date +"%s")" >version.date
-##sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
 sed -i "s/DEFAULT_PACKAGES:=/DEFAULT_PACKAGES:=luci-app-firewall luci-app-package-manager \
-luci-base luci-compat kmod-nvme libcurl luci-lib-fs \
-wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ca-bundle ip-full ruby ruby-yaml unzip bash tar block-mount resolveip ds-lite swconfig luci-app-filemanager /" include/target.mk
+luci-base luci-compat kmod-nvme libcurl luci-lib-fs coreutils coreutils-stty shadow-utils shadow-useradd mount-utils smartd mdadm libuci-lua \
+wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ca-bundle ip-full ruby ruby-yaml unzip bash block-mount resolveip ds-lite swconfig luci-app-footstrap-files /" include/target.mk
 
 sed -i "s/^.*vermagic$/\techo '1' > \$(LINUX_DIR)\/.vermagic/" include/kernel-defaults.mk
 
@@ -78,7 +77,7 @@ sed -i "s/tty\(0\|1\)::askfirst/tty\1::respawn/g" target/linux/*/base-files/etc/
 date=$(date +%Y%m%d)
 sed -i -e "/\(# \)\?REVISION:=/c\REVISION:=$date" -e '/VERSION_CODE:=/c\VERSION_CODE:=$(REVISION)' include/version.mk
 
-sed -i 's/option timeout 30/option timeout 60/g' package/system/rpcd/files/rpcd.config
+sed -i 's/option timeout 30/option timeout 120/g' package/system/rpcd/files/rpcd.config
 
 sed -i \
 	-e "s/+\(luci\|luci-ssl\|uhttpd\)\( \|$\)/\2/" \
@@ -87,9 +86,7 @@ sed -i \
 	-e 's?../../lang?$(TOPDIR)/feeds/packages/lang?' \
 	package/feeds/AspirantH/*/Makefile
 
-
 sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-
 sed -i '/^apk =/,/--preserve-env/{ /--preserve-env/ { /--force-overwrite/! s/$/ \\\n--force-overwrite/; }; }' include/rootfs.mk
 
 LUCI_MOD_SYSTEM="feeds/luci/modules/luci-mod-system"
