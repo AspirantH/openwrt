@@ -221,7 +221,7 @@ jobs:
 
       - name: Free up disk space
         env:
-        DEBIAN_FRONTEND: noninteractive
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo mkdir -p -m 777 /mnt/openwrt/build_dir openwrt/staging_dir
           ln -sf /mnt/openwrt/build_dir openwrt/build_dir
