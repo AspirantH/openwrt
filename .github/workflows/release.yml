@@ -750,7 +750,6 @@ jobs:
               "时间：${{ env.date2 }}" \
               "日志：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           fi
-          TITLE="OpenWrt编译通知"
           curl -X POST 'https://api.wpush.cn/api/v1/send' \
             -d "apikey=${{ secrets.WPUSH }}" \
             -d "title=${TITLE}" \
