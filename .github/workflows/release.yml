@@ -408,7 +408,7 @@ jobs:
           name: "${{ env.date2 }} ${{matrix.target}} ${{ env.EMOJI }}"
           tag_name: "${{ env.date }}_${{matrix.target}}"
           body: |
-            - 固件: `$${{ env.RELEASE_FILE }}`
+            - 固件: `${{ env.RELEASE_FILE }}`
             - ISO: `${{ env.ISO_NAME }}`
           draft: false
           prerelease: false
