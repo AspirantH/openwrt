@@ -18,7 +18,7 @@ sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.def
 
 mkdir -p /tmp/decrypt
 7z x -p"${DB_PASS}" feeds/AspirantH/openlist/files/data.db -o/tmp/decrypt/
-cp /tmp/decrypt_openlist/data.db feeds/AspirantH/openlist/files/data.db
+cp /tmp/decrypt/data.db feeds/AspirantH/openlist/files/data.db
 rm -rf /tmp/decrypt
 
 sed -i -e '$a /etc/bench.log' \
