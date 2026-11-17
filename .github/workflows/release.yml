@@ -233,7 +233,6 @@ jobs:
             echo "/bin/bash devices/${{matrix.target}}/$DIY_SH"
             /bin/bash "devices/${{matrix.target}}/$DIY_SH"
           fi
-          cp -Rf ./diy/* ./ || true
 
       - name: Defconfig
         run: |
