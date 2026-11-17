@@ -391,10 +391,6 @@ jobs:
             local s=${1%.*}; [ -z "$s" ] && s=0; [ "$s" -lt 0 ] && s=0
             printf '%d:%02d:%02d' $((s/3600)) $(((s%3600)/60)) $((s%60))
           }
-          int_or_zero() {
-            local v="$1"
-            case "$v" in ''|*[!0-9]*) echo 0 ;; *) echo "$v" ;; esac
-          }
           now_epoch() { date +%s; }
 
           RUN_START_EPOCH=$(date -d "$RUN_STARTED_AT" +%s 2>/dev/null || echo "0")
@@ -414,119 +410,17 @@ jobs:
           TOTAL_BYTES=0
           DONE_BYTES=0
           HTTP_CODE="?"
-          ABORT_REASON=""
-          CURL_PID=""
 
           upload_one() {
             local local_file="$1" remote_url="$2" label="$3"
-            local fname fsize fsize_h prog_file rpid rc
+            local fname fsize fsize_h prog_file abort_file rpid rc
             fname="$(basename "$local_file")"
             fsize=$(stat -c%s "$local_file")
             fsize_h=$(fmt_size "$fsize")
             TOTAL_BYTES=$((TOTAL_BYTES + fsize))
 
             prog_file="$(mktemp)"
-
-            (
-              last_pct=-10; last_up=0; last_t=0; speed_avg=0; samples=0
-              retry_count=0; last_retry_line=""; last_check_t=0
-              while [ ! -f "${prog_file}.done" ]; do
-                if [ -s "$prog_file" ]; then
-                  line=$(tail -n 1 "$prog_file" 2>/dev/null | tr -d '\r')
-
-                  if echo "$line" | grep -qiE 'retry|retrying|retries left'; then
-                    if [ "$line" != "$last_retry_line" ]; then
-                      last_retry_line="$line"; retry_count=$((retry_count+1))
-                      secs_left=$(echo "$line" | grep -m1 -oE '[0-9]+ seconds?' 2>/dev/null | grep -m1 -oE '[0-9]+' 2>/dev/null)
-                      tip=""; [ -n "${secs_left:-}" ] && tip=" (${secs_left}s 后重试)"
-                      echo "[RETRY] ${label}: 第 ${retry_count} 次重试${tip}"
-                    fi
-                    sleep 0.3; continue
-                  fi
-
-                  pct_raw=$(echo "$line" | grep -m1 -oE '[0-9]+(\.[0-9]+)?%' 2>/dev/null | tr -d '%')
-                  up_h=$(echo "$line" | grep -m1 -oE '[0-9]+(\.[0-9]+)?[kMG]?' 2>/dev/null)
-                  remain_str=$(echo "$line" | grep -m1 -oE '[0-9]+:[0-9]{2}:[0-9]{2}' 2>/dev/null)
-                  [ -z "$pct_raw" ] && { sleep 0.3; continue; }
-                  pct=${pct_raw%.*}
-                  pct=$(int_or_zero "$pct")
-
-                  up_bytes=$(echo "$up_h" | numfmt --from=iec 2>/dev/null || echo 0)
-                  up_bytes=$(int_or_zero "$up_bytes")
-                  now=$(now_epoch)
-                  if [ "$last_t" -gt 0 ] && [ "$now" -gt "$last_t" ]; then
-                    dt=$((now-last_t)); du=$((up_bytes-last_up))
-                    [ "$dt" -gt 0 ] && [ "$du" -ge 0 ] && speed_avg=$(( (speed_avg*samples + du/dt) / (samples+1) ))
-                    samples=$((samples+1))
-                  fi
-                  last_up=$up_bytes; last_t=$now
-
-                  speed_fmt="-"; [ "$speed_avg" -gt 0 ] && speed_fmt="$(fmt_size "$speed_avg")/s"
-                  eta_fmt="-"
-                  if [ "$speed_avg" -gt 0 ] && [ "$up_bytes" -gt 0 ] && [ "$up_bytes" -lt "$fsize" ]; then
-                    eta_fmt=$(fmt_eta $(( (fsize-up_bytes)/speed_avg )))
-                  fi
-                  [ -n "$remain_str" ] && eta_fmt="$remain_str"
-
-                  do_check=0
-                  for th in 5 10 20 40 60 80; do
-                    [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && do_check=1
-                  done
-                  [ $((now-last_check_t)) -ge "$CHECK_EVERY_SEC" ] && do_check=1
-                  if [ "$do_check" -eq 1 ] && [ "$speed_avg" -gt 0 ]; then
-                    last_check_t=$now
-                    speed_kbps=$(( speed_avg / 1024 ))
-                    remain_bytes=$(( fsize - up_bytes ))
-                    eta_sec=$(( remain_bytes / speed_avg ))
-                    elapsed_run=$(elapsed_since_run)
-                    projected_total=$(( elapsed_run + eta_sec ))
-                    budget=$JOB_BUDGET_SEC
-
-                    if [ "$speed_kbps" -lt "$MIN_SPEED_KBPS" ]; then
-                      ABORT_REASON="平均速率过低 ${speed_kbps} kB/s < ${MIN_SPEED_KBPS} kB/s"
-                    elif [ "$projected_total" -gt "$budget" ]; then
-                      ABORT_REASON="预计总耗时 $((projected_total/60)) 分钟 > 6 小时配额，已运行 $((elapsed_run/60)) 分钟，剩余预计 $((eta_sec/60)) 分钟"
-                    fi
-
-                    if [ -n "$ABORT_REASON" ]; then
-                      up_total_h=$(fmt_size "$up_bytes")
-                      content=$(printf '%s\n' \
-                        "WebDAV 上传已中止：${ABORT_REASON}" \
-                        "" \
-                        "文件：${fname}" \
-                        "大小：${fsize_h}" \
-                        "已传：${up_total_h} (${pct}%)" \
-                        "平均速率：$(( speed_avg / 1024 )) kB/s" \
-                        "已运行：$(( elapsed_run/60 )) 分钟" \
-                        "预计剩余：$(( eta_sec/60 )) 分钟" \
-                        "配额：6 小时" \
-                        "" \
-                        "日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")
-                      echo "[ABORT] ${label}: ${ABORT_REASON}"
-                      echo "::error::WebDAV 上传中止：${ABORT_REASON}"
-                      wpush_notice "WebDAV 上传中止：传输超时" "$content"
-                      if [ -n "${CURL_PID:-}" ]; then
-                        kill -TERM "$CURL_PID" 2>/dev/null || true
-                        sleep 2
-                        kill -KILL "$CURL_PID" 2>/dev/null || true
-                      fi
-                      return 66
-                    fi
-                  fi
-
-                  should=0
-                  for th in 0 25 50 75 100; do
-                    [ "$last_pct" -lt "$th" ] && [ "$pct" -ge "$th" ] && should=1
-                  done
-                  if [ "$should" -eq 1 ] || [ "$pct" -ge 100 ]; then
-                    last_pct=$pct
-                    echo "[${label}] ${pct}%  已传 ${up_h:-0} / ${fsize_h}  速度 ${speed_fmt}  剩余 ${eta_fmt}"
-                  fi
-                fi
-                sleep 0.3
-              done
-            ) &
-            rpid=$!
+            abort_file="$(mktemp)"
 
             set +e
             curl --progress-bar \
@@ -540,15 +434,64 @@ jobs:
               -w '%{http_code}\n' -o /dev/null \
               "$remote_url" > "${prog_file}" 2>&1 &
             CURL_PID=$!
+
+            (
+              set +e
+              set +o pipefail
+              last_decile=-1; last_up=0; last_t=$(now_epoch); last_check_t=$(now_epoch)
+              while [ ! -f "${prog_file}.done" ]; do
+                sleep 2
+                line=$(tail -n 1 "${prog_file}" 2>/dev/null | tr '\r' '\n' | tail -n 1)
+                pct=$(echo "$line" | grep -m1 -oE '[0-9]+(\.[0-9]+)?%' 2>/dev/null | tr -d '%')
+                pct=${pct%.*}
+                case "$pct" in ''|*[!0-9]*) continue ;; esac
+                up=$(( fsize * pct / 100 ))
+                now=$(now_epoch); dt=$(( now - last_t ))
+                speed=0
+                if [ "$dt" -gt 0 ]; then
+                  speed=$(( (up - last_up) / dt )); [ "$speed" -lt 0 ] && speed=0
+                  last_up=$up; last_t=$now
+                fi
+
+                if [ $(( pct / 10 )) -gt "$last_decile" ] || [ "$pct" -ge 100 ]; then
+                  last_decile=$(( pct / 10 ))
+                  eta="-"
+                  [ "$speed" -gt 0 ] && [ "$up" -lt "$fsize" ] && eta=$(fmt_eta $(( (fsize - up) / speed )))
+                  echo "[${label}] ${pct}%  已传 $(fmt_size "$up") / ${fsize_h}  速度 $(( speed / 1024 )) kB/s  剩余 ${eta}"
+                fi
+
+                if [ "$speed" -gt 0 ] && [ $(( now - last_check_t )) -ge "$CHECK_EVERY_SEC" ]; then
+                  last_check_t=$now
+                  projected=$(( $(elapsed_since_run) + (fsize - up) / speed ))
+                  if [ $(( speed / 1024 )) -lt "$MIN_SPEED_KBPS" ]; then
+                    echo "平均速率过低 $(( speed / 1024 )) kB/s < ${MIN_SPEED_KBPS} kB/s" > "${abort_file}"
+                  elif [ "$projected" -gt "$JOB_BUDGET_SEC" ]; then
+                    echo "预计总耗时 $(( projected / 60 )) 分钟 > 6 小时配额" > "${abort_file}"
+                  fi
+                  if [ -s "${abort_file}" ]; then
+                    reason=$(cat "${abort_file}")
+                    echo "::error::WebDAV 上传中止：${reason}"
+                    wpush_notice "WebDAV 上传中止" "文件：${fname}  大小：${fsize_h}  已传：$(fmt_size "$up") (${pct}%)  原因：${reason}  日志：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+                    kill -TERM "$CURL_PID" 2>/dev/null
+                    sleep 2
+                    kill -KILL "$CURL_PID" 2>/dev/null
+                    return 66
+                  fi
+                fi
+              done
+            ) &
+            rpid=$!
+
             wait "$CURL_PID"; rc=$?
-            set -e
 
             touch "${prog_file}.done"
             wait "$rpid" 2>/dev/null || true
             HTTP_CODE=$(tail -n 8 "${prog_file}" | grep -m1 -E '^[0-9]{3}$' 2>/dev/null); [ -z "$HTTP_CODE" ] && HTTP_CODE="?"
-            rm -f "$prog_file" "${prog_file}.done"
+            ABORT_REASON=$(cat "${abort_file}" 2>/dev/null)
+            rm -f "$prog_file" "${prog_file}.done" "$abort_file"
 
             if [ -n "$ABORT_REASON" ]; then
+              echo "[ABORT] ${label}: ${ABORT_REASON}"
               ABORT_REASON=""
               return 66
             fi
