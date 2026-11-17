@@ -21,13 +21,13 @@ mkdir -p /tmp/decrypt
 cp /tmp/decrypt/data.db feeds/AspirantH/openlist/files/data.db
 rm -rf /tmp/decrypt
 
-sed -i -e '$a /etc/bench.log' \
-        -e '/\/etc\/profile/d' \
-        -e '/\/etc\/shinit/d' \
-        package/base-files/files/lib/upgrade/keep.d/base-files-essential
-sed -i -e '/^\/etc\/profile/d' \
-        -e '/^\/etc\/shinit/d' \
-        package/base-files/Makefile
+##sed -i -e '$a /etc/bench.log' \
+##        -e '/\/etc\/profile/d' \
+##        -e '/\/etc\/shinit/d' \
+##        package/base-files/files/lib/upgrade/keep.d/base-files-essential
+##sed -i -e '/^\/etc\/profile/d' \
+##        -e '/^\/etc\/shinit/d' \
+##        package/base-files/Makefile
 sed -i "s/192.168.1/10.0.0/" package/base-files/files/bin/config_generate
 
 sed -i "s#false; \\\#true; \\\#" include/download.mk
