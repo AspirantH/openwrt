@@ -2,13 +2,10 @@
 #=================================================
 shopt -s extglob
 
-curl -sL "https://patch-diff.githubusercontent.com/raw/openwrt/openwrt/pull/26371.patch" | git apply
 sed -i '$a src-git AspirantH https://github.com/AspirantH/openwrt-packages.git;main' feeds.conf.default
 sed -i "/telephony/d" feeds.conf.default
 
 sed -i "s?targets/%S/packages?targets/%S/\$(LINUX_VERSION)?" include/feeds.mk
-
-sed -i '/	refresh_config();/d' scripts/feeds
 
 sed -i "s?git.openwrt.org/\(project\|feed\)?github.com/openwrt?g" feeds.conf.default
 
@@ -21,27 +18,11 @@ mkdir -p /tmp/decrypt
 cp /tmp/decrypt/data.db feeds/AspirantH/openlist/files/data.db
 rm -rf /tmp/decrypt
 
-##sed -i -e '$a /etc/bench.log' \
-##        -e '/\/etc\/profile/d' \
-##        -e '/\/etc\/shinit/d' \
-##        package/base-files/files/lib/upgrade/keep.d/base-files-essential
-##sed -i -e '/^\/etc\/profile/d' \
-##        -e '/^\/etc\/shinit/d' \
-##        package/base-files/Makefile
 sed -i "s/192.168.1/10.0.0/" package/base-files/files/bin/config_generate
 
 sed -i "s#false; \\\#true; \\\#" include/download.mk
-##
-#wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/package/kernel/linux/modules/video.mk -P package/kernel/linux/modules/
-#wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/package/network/utils/nftables/patches/002-nftables-add-fullcone-expression-support.patch -P package/network/utils/nftables/patches/
-#wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/package/libs/libnftnl/patches/001-libnftnl-add-fullcone-expression-support.patch -P package/libs/libnftnl/patches/
-#wget -N  https://github.com/coolsnowwolf/lede/raw/refs/heads/master/package/system/fstools/patches/0200-ntfs3-with-utf8.patch -P package/system/fstools/patches/
-#wget -N https://github.com/immortalwrt/immortalwrt/raw/refs/heads/openwrt-25.12/config/Config-kernel.in -P config/
-#rm -rf package/libs/openssl package/network/services/ppp
-#git_clone_path openwrt-25.12 https://github.com/immortalwrt/immortalwrt package/libs/openssl package/network/services/ppp
-##
+
 echo "$(date +"%s")" >version.date
-sed -i '/$(curdir)\/compile:/c\$(curdir)/compile: package/opkg/host/compile' package/Makefile
 sed -i "s/DEFAULT_PACKAGES:=/DEFAULT_PACKAGES:=luci-app-firewall luci-app-package-manager \
 luci-base luci-compat luci-lib-ipkg kmod-nvme libcurl luci-lib-fs coreutils coreutils-stty shadow-utils shadow-useradd mount-utils smartd mdadm libuci-lua \
 wget-ssl curl autocore htop nano kmod-lib-zstd kmod-tcp-bbr kmod-tun ca-bundle ip-full ruby ruby-yaml unzip bash block-mount resolveip ds-lite swconfig luci-app-footstrap-files /" include/target.mk
@@ -56,17 +37,7 @@ while [[ "$status" == "in_progress" || "$status" == "queued" ]];do
 	status=$(curl -H "Authorization: token $REPO_TOKEN" -s "https://api.github.com/repos/AspirantH/openwrt-packages/actions/runs" | jq -r '.workflow_runs[0].status')
 done
 
-wget -N https://raw.githubusercontent.com/openwrt/packages/master/lang/golang/golang/Makefile -P feeds/packages/lang/golang/golang/
-
-#sed -i "/call Build\/check-size,\$\$(KERNEL_SIZE)/d" include/image.mk
-##
-#git_clone_path master https://github.com/coolsnowwolf/lede mv target/linux/generic/hack-6.12
-
-#wget -N https://raw.githubusercontent.com/coolsnowwolf/lede/master/target/linux/generic/pending-6.12/613-netfilter_optional_tcp_window_check.patch -P target/linux/generic/pending-6.12/
-##
-# find target/linux/x86 -name "config*" -exec bash -c 'cat kernel.conf >> "{}"' \;
 sed -i 's/max_requests 3/max_requests 20/g' package/network/services/uhttpd/files/uhttpd.config
-#rm -rf ./feeds/packages/lang/{golang,node}
 sed -i "s/tty\(0\|1\)::askfirst/tty\1::respawn/g" target/linux/*/base-files/etc/inittab
 
 date=`date +%m.%d.%Y`
@@ -81,7 +52,7 @@ sed -i \
 	-e 's?../../lang?$(TOPDIR)/feeds/packages/lang?' \
 	package/feeds/AspirantH/*/Makefile
 
-sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" -e "s/set \${s}.disabled=.*/set \${s}.disabled='0'/" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+sed -i -e "s/set \${s}.country='\${country || ''}'/set \${s}.country='\${country || \"CN\"}'/g" package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 
 LUCI_MOD_SYSTEM="feeds/luci/modules/luci-mod-system"
 if [ -d "$LUCI_MOD_SYSTEM" ]; then

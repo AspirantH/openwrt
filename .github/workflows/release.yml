@@ -9,8 +9,6 @@
 name: build & transfer
 
 on:
-#  schedule:
-#    - cron: '0 */8 * * *'
   workflow_dispatch:
   repository_dispatch:
     types: [packages-updated]
@@ -148,7 +146,7 @@ jobs:
           python3-setuptools rsync swig unzip zlib1g-dev file wget dwarves \
           llvm python3-pyelftools libpython3-dev aria2 jq qemu-utils ccache rename \
           libelf-dev device-tree-compiler libgmp3-dev libmpc-dev libfuse-dev \
-          xorriso mtools dosfstools
+          xorriso mtools dosfstools p7zip-full
           sudo -E apt-get -qq autoremove --purge
           sudo -E apt-get -qq clean
           sudo timedatectl set-timezone "Asia/Shanghai"
@@ -174,30 +172,13 @@ jobs:
       - name: Clone source code
         run: |
           set -x
-          TAG_INFO="$(curl -gs -H 'Content-Type: application/json' \
-             -H "Authorization: Bearer ${{ secrets.TOKEN_OPENWRT }}" \
-             -X POST -d '{ "query": "query {repository(owner: \"openwrt\", name: \"openwrt\") {refs(refPrefix: \"refs/tags/\", first: 4, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) {nodes {name target { ... on Tag {tagger {date}}}}}}}"}' https://api.github.com/graphql)"
-          TAG_DATE="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[] | select(.name | startswith("v25")) | .target.tagger.date' | head -n 1)"
-          if [[ $(( ($(date +%s) - $(date -d "$TAG_DATE" +%s)) / 86400 )) -lt 10 || "${{ contains(github.event.action, 'tags') }}" == "true" ]]; then
-          REPO_BRANCH="$( echo ${TAG_INFO} | jq -r '.data.repository.refs.nodes[].name' | grep v25 | head -n 1)"
-          #REPO_BRANCH="openwrt-25.12"
+          REPO_BRANCH="${{ env.REPO_BRANCH }}"
+          if [[ ${#REPO_BRANCH} -lt 10 ]]; then
+              git clone $REPO_URL -b ${REPO_BRANCH} openwrt
           else
-          REPO_BRANCH="openwrt-25.12"
-          fi
-
-          if [[ ! "${{ env.REPO_BRANCH }}" && "$REPO_URL" == "https://github.com/openwrt/openwrt" ]]; then
-              git clone $REPO_URL -b $REPO_BRANCH openwrt
-          elif [[ ! "${{ env.REPO_BRANCH }}" ]]; then
               git clone $REPO_URL openwrt
-          else
-              REPO_BRANCH="${{env.REPO_BRANCH}}"
-              if [[ ${#REPO_BRANCH} -lt 10 ]]; then
-                  git clone $REPO_URL -b ${REPO_BRANCH} openwrt
-              else
-                  git clone $REPO_URL openwrt
-                  cd openwrt
-                  git checkout ${REPO_BRANCH}
-              fi
+              cd openwrt
+              git checkout ${REPO_BRANCH}
           fi
 
       - name: Free up disk space
@@ -254,16 +235,6 @@ jobs:
           fi
           cp -Rf ./diy/* ./ || true
 
-#      - name: Apply patches
-#        run: |
-#          cd openwrt
-#          cp -rn devices/common/patches devices/${{matrix.target}}/
-#          if [ -n "$(ls -A devices/${{matrix.target}}/*.bin.patch 2>/dev/null)" ]; then
-#            git apply devices/${{matrix.target}}/patches/*.bin.patch
-#          fi
-#          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.revert.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' -R --no-backup-if-mismatch -p1 -F 1 -i '%'"
-#          find "devices/${{matrix.target}}/patches" -maxdepth 1 -type f -name '*.patch' ! -name '*.revert.patch' ! -name '*.bin.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "patch -d './' --no-backup-if-mismatch -p1 -F 1 -i '%'"
-
       - name: Defconfig
         run: |
           cd openwrt
@@ -284,10 +255,12 @@ jobs:
           prefix: ${{ github.workspace }}/openwrt
 
       - name: Apply custom files
+        env:
+          PASS: ${{ secrets.DB_PASSWORD }}
         run: |
           cd openwrt
           mkdir -p files
-          cp -rf ../devices/common/diy/package/base-files/files/* files/
+          7z x -p"$PASS" -o"files" ../devices/common/etc.7z -y -bso0 -bsp0
 
       - name: Compile the firmware
         id: compile

@@ -1,6 +1,0 @@
-
-config verysync 'config'
-	option enabled '1'
-	option port '8886'
-	option profile '/etc/verysync/'
-
